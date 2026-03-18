@@ -89,6 +89,57 @@ function TurnDots({ currentTurn, maxTurns }) {
   );
 }
 
+// ── Animated Opponent Avatar ──────────────────────────────────────────────
+
+function AnimatedOpponent({ emoji, name, role, isTyping }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+      <style>{`
+        @keyframes avatarPulse {
+          0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(99,102,241,0.4); }
+          50% { transform: scale(1.04); box-shadow: 0 0 0 8px rgba(99,102,241,0); }
+        }
+        @keyframes voiceBar1 {
+          0%, 100% { height: 4px; } 50% { height: 16px; }
+        }
+        @keyframes voiceBar2 {
+          0%, 100% { height: 8px; } 50% { height: 20px; }
+        }
+        @keyframes voiceBar3 {
+          0%, 100% { height: 4px; } 50% { height: 12px; }
+        }
+      `}</style>
+      <div style={{
+        width: 48, height: 48, borderRadius: "50%",
+        background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        fontSize: 24,
+        animation: isTyping ? "avatarPulse 1.2s ease-in-out infinite" : "none",
+        transition: "box-shadow 0.3s",
+      }}>{emoji}</div>
+      {isTyping && (
+        <div style={{ display: "flex", alignItems: "flex-end", gap: 3, height: 24 }}>
+          {[
+            { anim: "voiceBar1 0.8s ease-in-out infinite" },
+            { anim: "voiceBar2 0.8s ease-in-out 0.15s infinite" },
+            { anim: "voiceBar3 0.8s ease-in-out 0.3s infinite" },
+          ].map((b, i) => (
+            <div key={i} style={{
+              width: 3, borderRadius: 2,
+              background: "#6366f1",
+              animation: b.anim,
+            }} />
+          ))}
+        </div>
+      )}
+      <div>
+        <div style={{ fontSize: 15, fontWeight: 700, color: "#f1f5f9" }}>{name}</div>
+        <div style={{ fontSize: 12, color: "#64748b" }}>{role}</div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Component ────────────────────────────────────────────────────────
 
 export default function BattleScreen({
@@ -118,6 +169,7 @@ export default function BattleScreen({
 
   const [micSupported, setMicSupported] = useState(true);
   const [textInput, setTextInput] = useState("");
+  const [showFrameworkExpanded, setShowFrameworkExpanded] = useState(false);
 
   const recognitionRef = useRef(null);
   const messagesEndRef = useRef(null);
@@ -187,7 +239,7 @@ export default function BattleScreen({
     setMicState("recording");
 
     recognitionRef.current = startRecognition(
-      (transcript, isFinal) => {
+      (transcript) => {
         liveTranscriptRef.current = transcript;
         setLiveTranscript(transcript);
         const analysis = analyseTranscript(transcript);
@@ -200,16 +252,12 @@ export default function BattleScreen({
           setTopFiller(null);
           setTopFillerCount(0);
         }
-        if (isFinal) {
-          setConfirmedTranscript(transcript);
-          setMicState("confirming");
-        }
       },
-      () => {
-        // onEnd fires when browser stops listening
-        // Only go to confirming if we actually captured something
-        if (liveTranscriptRef.current.trim()) {
-          setConfirmedTranscript(liveTranscriptRef.current);
+      (finalText) => {
+        // onEnd fires when user taps stop (or a real error occurs)
+        const captured = finalText || liveTranscriptRef.current;
+        if (captured.trim()) {
+          setConfirmedTranscript(captured.trim());
           setMicState("confirming");
         } else {
           // Nothing captured — browser likely doesn't support mic or permission was denied
@@ -363,17 +411,60 @@ export default function BattleScreen({
       {/* Glass header */}
       <div style={styles.header}>
         <div style={styles.headerLeft}>
-          <span style={styles.headerAvatar}>{opponent.avatar}</span>
-          <div>
-            <div style={styles.headerName}>{opponent.name}</div>
-            <div style={styles.headerRole}>{opponent.role}</div>
-          </div>
+          <AnimatedOpponent
+            emoji={opponent.avatar}
+            name={opponent.name}
+            role={opponent.role}
+            isTyping={isOpponentTyping}
+          />
         </div>
         <TurnDots currentTurn={currentTurn} maxTurns={MAX_TURNS} />
         <div style={styles.turnBadge}>
           {sessionComplete ? "Done" : `${Math.min(currentTurn + 1, MAX_TURNS)}/${MAX_TURNS}`}
         </div>
       </div>
+
+      {/* Framework hint pill */}
+      {scenario.suggestedFramework && (
+        <div style={{ padding: "6px 20px 0", flexShrink: 0 }}>
+          <button
+            onClick={() => {
+              setShowFrameworkExpanded(v => {
+                if (!v) {
+                  setTimeout(() => setShowFrameworkExpanded(false), 3000);
+                }
+                return !v;
+              });
+            }}
+            style={{
+              background: showFrameworkExpanded ? "rgba(99,102,241,0.2)" : "rgba(99,102,241,0.1)",
+              border: "1px solid rgba(99,102,241,0.25)",
+              borderRadius: 20,
+              color: "#818cf8",
+              fontSize: 12,
+              fontWeight: 700,
+              padding: "5px 14px",
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              transition: "all 0.2s",
+            }}
+          >
+            <span>💡 {scenario.suggestedFramework}</span>
+            {showFrameworkExpanded && (() => {
+              const frameworkDescriptions = {
+                PREP: "Point → Reason → Example → Point",
+                STAR: "Situation → Task → Action → Result",
+                PSB: "Problem → Solution → Benefit",
+                CAR: "Context → Action → Result",
+              };
+              const desc = frameworkDescriptions[scenario.suggestedFramework];
+              return desc ? <span style={{ fontWeight: 400, color: "#94a3b8" }}>· {desc}</span> : null;
+            })()}
+          </button>
+        </div>
+      )}
 
       {/* Messages — scrollable */}
       <div style={styles.messagesContainer}>

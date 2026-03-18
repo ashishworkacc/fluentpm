@@ -69,26 +69,72 @@ function Spinner() {
 }
 
 function CaptureModal({ onClose, onSave }) {
+  const [mode, setMode] = useState("single"); // "single" | "bulk"
   const [text, setText] = useState("");
   const [source, setSource] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  async function handleSave() {
+  // Bulk mode state
+  const [bulkText, setBulkText] = useState("");
+  const [bulkProgress, setBulkProgress] = useState(null); // null | { current, total }
+
+  async function handleEnrich() {
     if (!text.trim()) return;
     setLoading(true);
     setError(null);
     try {
       const enriched = await enrichExpression(text.trim());
-      if (!enriched) throw new Error("Enrichment failed. Try again.");
+      if (!enriched) throw new Error("Enrichment returned empty. Try again.");
       await onSave(text.trim(), enriched, source);
+      setText("");
+      setSource("");
       onClose();
     } catch (err) {
-      setError(err.message || "Something went wrong. Please try again.");
+      setError(err.message || "Something went wrong. Try again.");
     } finally {
-      setLoading(false);
+      setLoading(false);   // ALWAYS runs, even on error
     }
   }
+
+  async function handleBulkImport() {
+    const lines = bulkText.split("\n").map(l => l.trim()).filter(Boolean);
+    if (lines.length === 0) return;
+    setLoading(true);
+    setError(null);
+    setBulkProgress({ current: 0, total: lines.length });
+
+    let saved = 0;
+    let failed = 0;
+
+    for (let i = 0; i < lines.length; i++) {
+      setBulkProgress({ current: i + 1, total: lines.length });
+      try {
+        const enriched = await enrichExpression(lines[i]);
+        if (!enriched) throw new Error("empty");
+        await onSave(lines[i], enriched, source);
+        saved++;
+      } catch {
+        failed++;
+      }
+      // 500ms delay between calls to avoid rate limits
+      if (i < lines.length - 1) {
+        await new Promise(res => setTimeout(res, 500));
+      }
+    }
+
+    setLoading(false);
+    setBulkProgress(null);
+
+    if (failed === 0) {
+      setError(null);
+      onClose();
+    } else {
+      setError(`${saved} of ${lines.length} saved. Some failed — try again.`);
+    }
+  }
+
+  const bulkLines = bulkText.split("\n").filter(l => l.trim()).length;
 
   return (
     <div style={styles.modalOverlay}>
@@ -98,56 +144,159 @@ function CaptureModal({ onClose, onSave }) {
           <button onClick={onClose} style={styles.closeBtn}>✕</button>
         </div>
 
-        <textarea
-          value={text}
-          onChange={e => setText(e.target.value)}
-          placeholder="Paste an expression you want to learn..."
-          rows={4}
-          style={styles.captureTextarea}
-          autoFocus
-        />
-
-        <div style={{ marginBottom: 16 }}>
-          <div style={styles.sourceLabelText}>Source</div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {SOURCE_TAGS.map(tag => (
-              <button
-                key={tag}
-                onClick={() => setSource(source === tag ? null : tag)}
-                style={{
-                  ...styles.sourceTagBtn,
-                  background: source === tag ? "rgba(99,102,241,0.2)" : "rgba(255,255,255,0.05)",
-                  border: source === tag
-                    ? "1px solid rgba(99,102,241,0.5)"
-                    : "1px solid rgba(255,255,255,0.08)",
-                  color: source === tag ? "#818cf8" : "#64748b",
-                }}
-              >
-                {tag}
-              </button>
-            ))}
-          </div>
+        {/* Mode toggle — Single | Bulk */}
+        <div style={{
+          display: "flex",
+          background: "rgba(255,255,255,0.05)",
+          borderRadius: 20,
+          padding: 3,
+          marginBottom: 16,
+          gap: 2,
+        }}>
+          {["single", "bulk"].map(m => (
+            <button
+              key={m}
+              onClick={() => setMode(m)}
+              style={{
+                flex: 1,
+                padding: "7px 12px",
+                borderRadius: 18,
+                border: "none",
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: "pointer",
+                background: mode === m ? "rgba(99,102,241,0.3)" : "transparent",
+                color: mode === m ? "#818cf8" : "#64748b",
+                transition: "all 0.15s",
+              }}
+            >
+              {m === "single" ? "Single" : "Bulk"}
+            </button>
+          ))}
         </div>
 
-        {error && (
-          <div style={styles.errorBox}>{error}</div>
-        )}
+        {mode === "single" ? (
+          <>
+            <textarea
+              value={text}
+              onChange={e => setText(e.target.value)}
+              placeholder="Paste an expression you want to learn..."
+              rows={4}
+              style={styles.captureTextarea}
+              autoFocus
+            />
 
-        <button
-          onClick={handleSave}
-          disabled={!text.trim() || loading}
-          style={{
-            ...styles.saveBtn,
-            opacity: !text.trim() || loading ? 0.5 : 1,
-            cursor: !text.trim() || loading ? "default" : "pointer",
-          }}
-        >
-          {loading ? (
-            <span style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "center" }}>
-              <Spinner /> Enriching...
-            </span>
-          ) : "Save Expression"}
-        </button>
+            <div style={{ marginBottom: 16 }}>
+              <div style={styles.sourceLabelText}>Source</div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {SOURCE_TAGS.map(tag => (
+                  <button
+                    key={tag}
+                    onClick={() => setSource(source === tag ? null : tag)}
+                    style={{
+                      ...styles.sourceTagBtn,
+                      background: source === tag ? "rgba(99,102,241,0.2)" : "rgba(255,255,255,0.05)",
+                      border: source === tag
+                        ? "1px solid rgba(99,102,241,0.5)"
+                        : "1px solid rgba(255,255,255,0.08)",
+                      color: source === tag ? "#818cf8" : "#64748b",
+                    }}
+                  >
+                    {tag}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {error && <div style={styles.errorBox}>{error}</div>}
+
+            <button
+              onClick={handleEnrich}
+              disabled={!text.trim() || loading}
+              style={{
+                ...styles.saveBtn,
+                opacity: !text.trim() || loading ? 0.5 : 1,
+                cursor: !text.trim() || loading ? "default" : "pointer",
+              }}
+            >
+              {loading ? (
+                <span style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "center" }}>
+                  <Spinner /> Enriching...
+                </span>
+              ) : "Save Expression"}
+            </button>
+          </>
+        ) : (
+          <>
+            <textarea
+              value={bulkText}
+              onChange={e => setBulkText(e.target.value)}
+              placeholder="Paste one expression per line..."
+              style={{ ...styles.captureTextarea, height: 160, resize: "vertical" }}
+              autoFocus
+            />
+
+            <div style={{ marginBottom: 16 }}>
+              <div style={styles.sourceLabelText}>Source</div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {SOURCE_TAGS.map(tag => (
+                  <button
+                    key={tag}
+                    onClick={() => setSource(source === tag ? null : tag)}
+                    style={{
+                      ...styles.sourceTagBtn,
+                      background: source === tag ? "rgba(99,102,241,0.2)" : "rgba(255,255,255,0.05)",
+                      border: source === tag
+                        ? "1px solid rgba(99,102,241,0.5)"
+                        : "1px solid rgba(255,255,255,0.08)",
+                      color: source === tag ? "#818cf8" : "#64748b",
+                    }}
+                  >
+                    {tag}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Progress indicator */}
+            {bulkProgress && (
+              <div style={{
+                background: "rgba(99,102,241,0.08)",
+                border: "1px solid rgba(99,102,241,0.2)",
+                borderRadius: 10,
+                padding: "10px 12px",
+                color: "#818cf8",
+                fontSize: 13,
+                fontWeight: 600,
+                marginBottom: 12,
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+              }}>
+                <Spinner />
+                Enriching {bulkProgress.current} of {bulkProgress.total}...
+              </div>
+            )}
+
+            {error && <div style={styles.errorBox}>{error}</div>}
+
+            <button
+              onClick={handleBulkImport}
+              disabled={bulkLines === 0 || loading}
+              style={{
+                ...styles.saveBtn,
+                opacity: bulkLines === 0 || loading ? 0.5 : 1,
+                cursor: bulkLines === 0 || loading ? "default" : "pointer",
+              }}
+            >
+              {loading && !bulkProgress ? (
+                <span style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "center" }}>
+                  <Spinner /> Importing...
+                </span>
+              ) : `Import ${bulkLines > 0 ? bulkLines : ""} expression${bulkLines !== 1 ? "s" : ""}`}
+            </button>
+          </>
+        )}
       </div>
     </div>
   );

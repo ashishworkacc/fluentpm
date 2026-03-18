@@ -86,13 +86,27 @@ export default function PreBattleScreen({
             <span style={styles.situationType}>
               {scenario.situationType.charAt(0).toUpperCase() + scenario.situationType.slice(1)}
             </span>
-            {scenario.suggestedFramework && (
-              <span style={styles.frameworkHint}>
-                Try: {scenario.suggestedFramework}
-              </span>
-            )}
           </div>
         </div>
+
+        {/* Framework Hint Card — prominent */}
+        {scenario.suggestedFramework && (() => {
+          const frameworkDescriptions = {
+            PREP: "Point → Reason → Example → Point",
+            STAR: "Situation → Task → Action → Result",
+            PSB: "Problem → Solution → Benefit",
+            CAR: "Context → Action → Result",
+          };
+          const desc = frameworkDescriptions[scenario.suggestedFramework] || "";
+          return (
+            <div style={styles.frameworkCard}>
+              <div style={styles.frameworkCardTitle}>💡 Suggested Framework</div>
+              <div style={styles.frameworkCardName}>{scenario.suggestedFramework}</div>
+              {desc && <div style={styles.frameworkCardDesc}>{desc}</div>}
+              <div style={styles.frameworkCardNote}>Suggestion — not required</div>
+            </div>
+          );
+        })()}
 
         {/* Outline — collapsible */}
         <div style={styles.outlineSection}>
@@ -295,10 +309,39 @@ const styles = {
     fontWeight: 700,
     textTransform: "capitalize",
   },
-  frameworkHint: {
-    fontSize: 12,
-    color: "#f59e0b",
-    fontWeight: 500,
+  frameworkCard: {
+    background: "rgba(99,102,241,0.08)",
+    border: "1px solid rgba(99,102,241,0.25)",
+    borderLeft: "4px solid #6366f1",
+    borderRadius: "0 14px 14px 0",
+    padding: "16px 18px",
+    marginBottom: 16,
+  },
+  frameworkCardTitle: {
+    fontSize: 11,
+    fontWeight: 700,
+    color: "#6366f1",
+    textTransform: "uppercase",
+    letterSpacing: "1px",
+    marginBottom: 8,
+  },
+  frameworkCardName: {
+    fontSize: 18,
+    fontWeight: 800,
+    color: "#818cf8",
+    marginBottom: 6,
+    letterSpacing: "-0.3px",
+  },
+  frameworkCardDesc: {
+    fontSize: 13,
+    color: "#94a3b8",
+    marginBottom: 8,
+    lineHeight: 1.5,
+  },
+  frameworkCardNote: {
+    fontSize: 11,
+    color: "#475569",
+    fontStyle: "italic",
   },
   // Outline
   outlineSection: {

@@ -2,7 +2,8 @@ import { LANGUAGE_REGISTER_RULES } from "../data/languageRules.js";
 import { getXPForScore } from "../hooks/useProgress.js";
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
-const MODEL = "deepseek/deepseek-r1";
+const MODEL = "deepseek/deepseek-chat";
+const FAST_MODEL = "deepseek/deepseek-chat";
 
 function getApiKey() {
   return import.meta.env.VITE_OPENROUTER_API_KEY;
@@ -265,38 +266,45 @@ Rules:
 
 export async function enrichExpression(expression) {
   const prompt = buildEnrichPrompt(expression);
-
-  const response = await fetch(OPENROUTER_API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${getApiKey()}`,
-      "HTTP-Referer": window.location.origin,
-      "X-Title": "FluentPM",
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.3,
-      max_tokens: 600,
-    }),
-  });
-
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`OpenRouter error ${response.status}: ${err}`);
-  }
-
-  const data = await response.json();
-  const raw = data.choices?.[0]?.message?.content ?? "{}";
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
 
   try {
-    // Strip any markdown code fences if present
-    const cleaned = raw.replace(/```(?:json)?\n?/g, "").replace(/```/g, "").trim();
-    return JSON.parse(cleaned);
-  } catch {
-    console.error("Failed to parse enrich response:", raw);
-    return null;
+    const response = await fetch(OPENROUTER_API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${getApiKey()}`,
+        "HTTP-Referer": window.location.origin,
+        "X-Title": "FluentPM",
+      },
+      body: JSON.stringify({
+        model: FAST_MODEL,
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.3,
+        max_tokens: 600,
+      }),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      const err = await response.text();
+      throw new Error(`OpenRouter error ${response.status}: ${err}`);
+    }
+
+    const data = await response.json();
+    const raw = data.choices?.[0]?.message?.content ?? "{}";
+
+    try {
+      // Strip any markdown code fences if present
+      const cleaned = raw.replace(/```(?:json)?\n?/g, "").replace(/```/g, "").trim();
+      return JSON.parse(cleaned);
+    } catch {
+      console.error("Failed to parse enrich response:", raw);
+      return null;
+    }
+  } finally {
+    clearTimeout(timeout);
   }
 }
 

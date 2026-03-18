@@ -1,26 +1,63 @@
 export function startRecognition(onTranscript, onEnd) {
-  if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) {
-    return { supported: false };
-  }
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  const recognition = new SpeechRecognition();
-  recognition.lang = "en-IN";
-  recognition.continuous = false;
-  recognition.interimResults = true;
-  recognition.maxAlternatives = 1;
+  if (!SpeechRecognition) return { supported: false };
 
-  recognition.onresult = (event) => {
-    const transcript = Array.from(event.results)
-      .map(r => r[0].transcript)
-      .join("");
-    const isFinal = event.results[event.results.length - 1].isFinal;
-    onTranscript(transcript, isFinal);
+  let finalTranscript = "";
+  let isActive = true; // controlled by the caller via .stop()
+
+  function createAndStart() {
+    const recognition = new SpeechRecognition();
+    recognition.lang = "en-IN";
+    recognition.continuous = true;       // don't stop on pause
+    recognition.interimResults = true;
+    recognition.maxAlternatives = 1;
+
+    recognition.onresult = (event) => {
+      let interim = "";
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const t = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          finalTranscript += t + " ";
+        } else {
+          interim = t;
+        }
+      }
+      onTranscript((finalTranscript + interim).trim(), false);
+    };
+
+    recognition.onend = () => {
+      // Auto-restart if user hasn't tapped stop yet
+      if (isActive) {
+        try { recognition.start(); } catch {}
+      } else {
+        onEnd(finalTranscript.trim());
+      }
+    };
+
+    recognition.onerror = (e) => {
+      // Ignore no-speech errors — just restart
+      if (e.error === "no-speech" || e.error === "aborted") {
+        if (isActive) {
+          try { recognition.start(); } catch {}
+        }
+        return;
+      }
+      // Real error
+      isActive = false;
+      onEnd(finalTranscript.trim());
+    };
+
+    try { recognition.start(); } catch {}
+    return recognition;
+  }
+
+  let rec = createAndStart();
+
+  return {
+    supported: true,
+    stop: () => {
+      isActive = false;
+      try { rec.stop(); } catch {}
+    },
   };
-  recognition.onend = () => onEnd();
-  recognition.onerror = (event) => {
-    console.error("Speech recognition error:", event.error);
-    onEnd();
-  };
-  recognition.start();
-  return { supported: true, stop: () => recognition.stop() };
 }
