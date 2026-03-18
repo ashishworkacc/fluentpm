@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from "react";
 import { sendBattleMessage } from "../lib/openrouter.js";
 import { startRecognition } from "../lib/speechRecognition.js";
 import { analyseTranscript } from "../hooks/useRealTimeAnalysis.js";
+import TalkingFace from "./TalkingFace.jsx";
+import { cancelSpeech } from "../lib/speechSynthesis.js";
 
 const MAX_TURNS = 3;
 
@@ -171,6 +173,11 @@ export default function BattleScreen({
   const [textInput, setTextInput] = useState("");
   const [showFrameworkExpanded, setShowFrameworkExpanded] = useState(false);
 
+  // TalkingFace speech state
+  const [isSpeakingFace, setIsSpeakingFace] = useState(false);
+  const [currentSpeechText, setCurrentSpeechText] = useState("");
+  const [voiceMuted, setVoiceMuted] = useState(false);
+
   const recognitionRef = useRef(null);
   const messagesEndRef = useRef(null);
   const hasInitialised = useRef(false);
@@ -190,6 +197,9 @@ export default function BattleScreen({
       setMicState("nomic");
     }
   }, []);
+
+  // Cancel speech on unmount
+  useEffect(() => () => cancelSpeech(), []);
 
   // Kick off the session: get the opponent's first line
   useEffect(() => {
@@ -218,9 +228,13 @@ export default function BattleScreen({
         );
         const cleanReply = reply.split("###FEEDBACK###")[0].trim();
         setMessages([{ role: "opponent", text: cleanReply }]);
+        setCurrentSpeechText(cleanReply);
+        setIsSpeakingFace(true);
       } catch (err) {
         console.error("Opener error:", err);
         setMessages([{ role: "opponent", text: scenario.text }]);
+        setCurrentSpeechText(scenario.text);
+        setIsSpeakingFace(true);
       } finally {
         setIsOpponentTyping(false);
       }
@@ -351,6 +365,8 @@ export default function BattleScreen({
 
       if (cleanReply) {
         setMessages(prev => [...prev, { role: "opponent", text: cleanReply }]);
+        setCurrentSpeechText(cleanReply);
+        setIsSpeakingFace(true);
       }
 
       if (feedbackBlock) {
@@ -411,16 +427,54 @@ export default function BattleScreen({
       {/* Glass header */}
       <div style={styles.header}>
         <div style={styles.headerLeft}>
-          <AnimatedOpponent
-            emoji={opponent.avatar}
-            name={opponent.name}
-            role={opponent.role}
-            isTyping={isOpponentTyping}
+          <TalkingFace
+            opponentId={opponent.id}
+            opponent={opponent}
+            isSpeaking={isSpeakingFace}
+            text={currentSpeechText}
+            onSpeechEnd={() => setIsSpeakingFace(false)}
+            muted={voiceMuted}
           />
+          <div style={{ display: "flex", flexDirection: "column", gap: 4, marginLeft: 12 }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: "#f1f5f9" }}>{opponent.name}</div>
+            <div style={{ fontSize: 13, color: "#64748b" }}>{opponent.role}</div>
+            <div style={{
+              display: "inline-block",
+              fontSize: 11,
+              fontWeight: 700,
+              padding: "2px 8px",
+              borderRadius: 20,
+              background: opponent.aggression === "high"
+                ? "rgba(244,63,94,0.12)"
+                : opponent.aggression === "medium"
+                  ? "rgba(245,158,11,0.12)"
+                  : "rgba(34,197,94,0.12)",
+              color: opponent.aggression === "high"
+                ? "#f43f5e"
+                : opponent.aggression === "medium"
+                  ? "#f59e0b"
+                  : "#22c55e",
+              textTransform: "capitalize",
+              alignSelf: "flex-start",
+            }}>
+              {opponent.aggression}
+            </div>
+          </div>
         </div>
-        <TurnDots currentTurn={currentTurn} maxTurns={MAX_TURNS} />
-        <div style={styles.turnBadge}>
-          {sessionComplete ? "Done" : `${Math.min(currentTurn + 1, MAX_TURNS)}/${MAX_TURNS}`}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button
+              onClick={() => { setVoiceMuted(m => !m); cancelSpeech(); setIsSpeakingFace(false); }}
+              style={styles.muteButton}
+              title={voiceMuted ? "Unmute voice" : "Mute voice"}
+            >
+              {voiceMuted ? "🔇" : "🔊"}
+            </button>
+            <div style={styles.turnBadge}>
+              {sessionComplete ? "Done" : `${Math.min(currentTurn + 1, MAX_TURNS)}/${MAX_TURNS}`}
+            </div>
+          </div>
+          <TurnDots currentTurn={currentTurn} maxTurns={MAX_TURNS} />
         </div>
       </div>
 
@@ -662,16 +716,17 @@ const styles = {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    padding: "14px 20px",
+    padding: "12px 16px",
     background: "rgba(6,8,24,0.8)",
     borderBottom: "1px solid rgba(255,255,255,0.08)",
     flexShrink: 0,
     zIndex: 10,
+    minHeight: 170,
   },
   headerLeft: {
     display: "flex",
     alignItems: "center",
-    gap: 10,
+    gap: 4,
   },
   headerAvatar: {
     fontSize: 28,
@@ -692,6 +747,16 @@ const styles = {
     padding: "4px 12px",
     borderRadius: 20,
     fontWeight: 700,
+  },
+  muteButton: {
+    background: "rgba(255,255,255,0.06)",
+    border: "1px solid rgba(255,255,255,0.1)",
+    borderRadius: 20,
+    padding: "4px 10px",
+    fontSize: 16,
+    cursor: "pointer",
+    color: "#f1f5f9",
+    lineHeight: 1,
   },
   // Messages
   messagesContainer: {
