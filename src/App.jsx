@@ -347,14 +347,14 @@ const styles = {
     animation: "fadeIn 0.4s ease",
   },
   signInCard: {
-    background: "rgba(255,255,255,0.06)",
-    border: "1px solid rgba(255,255,255,0.1)",
+    background: "rgba(20,22,55,0.95)",
+    border: "1px solid rgba(99,102,241,0.25)",
     borderRadius: 24,
     padding: "52px 40px",
     textAlign: "center",
     maxWidth: 380,
     width: "100%",
-    boxShadow: "0 40px 80px rgba(0,0,0,0.4)",
+    boxShadow: "0 0 0 1px rgba(99,102,241,0.1), 0 40px 80px rgba(0,0,0,0.6)",
   },
   signInLogoMark: {
     display: "flex",
