@@ -1,11 +1,11 @@
 // Opponent voice profiles — each character gets a distinct voice
 const VOICE_PROFILES = {
-  priya_sharma:    { pitch: 1.2, rate: 1.0, name: "priya"    }, // confident woman, measured
-  rahul_nair:      { pitch: 0.85, rate: 0.95, name: "rahul"  }, // deep, precise
-  sarah_chen:      { pitch: 1.15, rate: 1.1, name: "sarah"   }, // fast, clipped
-  amit_bose:       { pitch: 0.9, rate: 0.9, name: "amit"     }, // slow, deliberate
-  leela_krishnan:  { pitch: 1.1, rate: 0.85, name: "leela"   }, // warm, careful
-  james_morton:    { pitch: 0.8, rate: 1.05, name: "james"   }, // commanding, fast
+  priya_sharma:   { pitch: 1.05, rate: 0.92, name: "priya"  }, // authoritative, measured
+  rahul_nair:     { pitch: 0.95, rate: 0.9,  name: "rahul"  }, // deep, precise
+  sarah_chen:     { pitch: 1.08, rate: 1.0,  name: "sarah"  }, // crisp, direct
+  amit_bose:      { pitch: 0.92, rate: 0.88, name: "amit"   }, // deliberate, careful
+  leela_krishnan: { pitch: 1.02, rate: 0.88, name: "leela"  }, // warm, measured
+  james_morton:   { pitch: 0.88, rate: 0.95, name: "james"  }, // commanding, steady
 };
 
 let voices = [];
@@ -24,12 +24,51 @@ if (typeof window !== "undefined" && window.speechSynthesis) {
 
 function pickVoice(profile) {
   if (!voicesLoaded) loadVoices();
-  // Prefer English voices — try en-GB, then en-US, then any English
-  const english = voices.filter(v => v.lang.startsWith("en"));
+  const all = window.speechSynthesis.getVoices();
+  const english = all.filter(v => v.lang.startsWith("en"));
   if (english.length === 0) return null;
-  // Pick different voices for different characters by index
-  const idx = ["priya","rahul","sarah","amit","leela","james"].indexOf(profile.name);
-  return english[Math.min(idx, english.length - 1)] || english[0];
+
+  const isFemalePart = ["priya", "sarah", "leela"].includes(profile.name);
+
+  // Priority 1: Google Neural voices (Chrome desktop) — best quality
+  // Female characters → prefer "Google UK English Female" or "Google US English"
+  // Male characters → prefer "Google UK English Male" or "Google US English"
+  const googleVoices = english.filter(v => v.name.toLowerCase().includes("google"));
+  if (googleVoices.length > 0) {
+    const gendered = googleVoices.filter(v =>
+      isFemalePart
+        ? v.name.toLowerCase().includes("female") || v.name.toLowerCase().includes("woman")
+        : v.name.toLowerCase().includes("male") || v.name.toLowerCase().includes("man")
+    );
+    if (gendered.length > 0) return gendered[0];
+    return googleVoices[0];
+  }
+
+  // Priority 2: macOS Enhanced/Premium voices — second best
+  const enhanced = english.filter(v =>
+    v.name.includes("Enhanced") || v.name.includes("Premium") || v.name.includes("Natural")
+  );
+  if (enhanced.length > 0) {
+    // Good macOS voices by gender
+    const macFemale = ["Samantha", "Karen", "Victoria", "Moira", "Tessa"];
+    const macMale = ["Daniel", "Alex", "Tom", "Fred", "Oliver"];
+    const preferred = isFemalePart ? macFemale : macMale;
+    const match = enhanced.find(v => preferred.some(n => v.name.includes(n)));
+    if (match) return match;
+    return enhanced[0];
+  }
+
+  // Priority 3: Any named macOS/Windows voice (not the default robotic ones)
+  const macFemale = ["Samantha", "Karen", "Victoria", "Moira", "Tessa"];
+  const macMale = ["Daniel", "Alex", "Tom", "Fred", "Oliver"];
+  const winFemale = ["Zira", "Hazel", "Susan"];
+  const winMale = ["David", "Mark", "George", "Richard"];
+  const preferred = isFemalePart ? [...macFemale, ...winFemale] : [...macMale, ...winMale];
+  const named = english.find(v => preferred.some(n => v.name.includes(n)));
+  if (named) return named;
+
+  // Fallback: first English voice
+  return english[0];
 }
 
 /**

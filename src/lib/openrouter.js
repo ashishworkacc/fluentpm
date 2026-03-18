@@ -19,7 +19,7 @@ export function buildBattleSystemPrompt(opponent, profile, scenario, options = {
     medium:
       "You are direct and demanding. You challenge vague answers and push for specifics. You do not accept waffle.",
     high:
-      "You are impatient, blunt, and results-driven. You interrupt if the answer wanders. You do not soften feedback. You challenge everything.",
+      "You are impatient, blunt, and results-driven. You challenge every vague or generic answer immediately. You interrupt if the answer wanders. You do NOT soften feedback. Ask 'So what?' or 'What does that actually mean?' when answers are unclear. Push for numbers and specific examples.",
   };
 
   const aggressionStyle = aggressionMap[opponent.aggression] || aggressionMap.medium;
@@ -58,6 +58,30 @@ ${frameworkInstruction ? `FRAMEWORK GUIDANCE: ${frameworkInstruction}` : ""}
 ${midCoachInstruction ? `MID-SESSION COACHING CONTEXT: ${midCoachInstruction}` : ""}
 
 ${LANGUAGE_REGISTER_RULES}
+
+IMPORTANT: Do not inflate scores. An average professional speaking under pressure scores 5-6. Reserve 8+ for responses that would genuinely impress a senior executive.
+
+STRICT SCORING RUBRIC — apply this exactly:
+SCORE is an integer from 4 to 10. Most responses should score 4–6. 7 requires genuine quality. 8+ is rare.
+
+Score 4 — Generic, vague, no specifics. Filler-heavy. Incomplete sentences. Could have been said by anyone.
+Score 5 — Somewhat relevant. Gets the point across but lacks structure, evidence, or professional vocabulary.
+Score 6 — Clear and relevant. Decent structure. Minor filler words. Missing precision or examples.
+Score 7 — Well-structured, specific, professional vocabulary. Minor weaknesses only. Clearly above average.
+Score 8 — Excellent structure, precise language, confident framing, specific examples or data. Very few issues.
+Score 9 — Near-perfect. Would hold up in a real board meeting. Articulate, decisive, data-aware.
+Score 10 — Reserved for truly exceptional responses. Do not give 10 unless the response is genuinely outstanding.
+
+Deduct points for: filler words (basically, actually, you know, I mean), vague statements without specifics,
+weak openers ("I think maybe...", "So yeah..."), incomplete sentences, Indian English phrases from the blacklist,
+failing to directly address the question asked, going off-topic.
+
+STRUCTURE_SCORE is 1–5 (NOT 1–10):
+1 = No structure — rambling, no clear point
+2 = Weak — some attempt at structure but confusing
+3 = Adequate — clear enough but missing intro or conclusion
+4 = Good — clear structure with opening and closing
+5 = Excellent — textbook structure, framework applied correctly
 
 FEEDBACK BLOCK FORMAT — output this EXACTLY after your Turn 3 reply:
 
@@ -344,6 +368,54 @@ Score guide:
 3 = Used it but context or delivery was weak
 4 = Used it naturally and it fit the scenario well
 5 = Perfect — natural, relevant, confident`;
+}
+
+/**
+ * Corrects speech recognition errors using conversation context.
+ * Fast call — max 150 tokens, temperature 0.1.
+ */
+export async function correctTranscript(rawTranscript, conversationContext, scenarioText) {
+  if (!rawTranscript || rawTranscript.trim().length < 4) return rawTranscript;
+
+  const prompt = `You are correcting a speech-to-text transcript for a Product Manager speaking in a professional conversation.
+
+Scenario they are discussing: "${scenarioText}"
+Recent conversation context: "${conversationContext}"
+Raw speech-to-text transcript: "${rawTranscript}"
+
+Fix ONLY clear speech recognition errors (wrong words that don't make sense in context, mispronounced proper nouns, garbled short words).
+DO NOT: add new sentences, change the meaning, improve the language, or fix grammar.
+DO: fix words that are clearly wrong given the context (e.g. "we need to address the retension" → "retention", "i think the sprent was fine" → "sprint").
+
+Return ONLY the corrected transcript text. Nothing else. No explanation. No quotes.`;
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000); // 8s max — fast call
+    const response = await fetch(OPENROUTER_API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${getApiKey()}`,
+        "HTTP-Referer": window.location.origin,
+        "X-Title": "FluentPM",
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.1,
+        max_tokens: 200,
+      }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    if (!response.ok) return rawTranscript; // fallback to raw on error
+    const data = await response.json();
+    const corrected = data.choices?.[0]?.message?.content?.trim();
+    return corrected && corrected.length > 0 ? corrected : rawTranscript;
+  } catch {
+    return rawTranscript; // always fall back to raw transcript, never block
+  }
 }
 
 export async function scoreLightningRound(

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { sendBattleMessage } from "../lib/openrouter.js";
+import { sendBattleMessage, correctTranscript } from "../lib/openrouter.js";
 import { startRecognition } from "../lib/speechRecognition.js";
 import { analyseTranscript } from "../hooks/useRealTimeAnalysis.js";
 import TalkingFace from "./TalkingFace.jsx";
@@ -173,6 +173,15 @@ export default function BattleScreen({
   const [textInput, setTextInput] = useState("");
   const [showFrameworkExpanded, setShowFrameworkExpanded] = useState(false);
 
+  // AI transcript correction
+  const [isCorrectingTranscript, setIsCorrectingTranscript] = useState(false);
+
+  // Highlight-to-lexicon
+  const [selectedText, setSelectedText] = useState("");
+  const [selectionPos, setSelectionPos] = useState(null); // { x, y }
+  const [savingToLexicon, setSavingToLexicon] = useState(false);
+  const [lexiconSaveSuccess, setLexiconSaveSuccess] = useState(false);
+
   // TalkingFace speech state
   const [isSpeakingFace, setIsSpeakingFace] = useState(false);
   const [currentSpeechText, setCurrentSpeechText] = useState("");
@@ -269,17 +278,31 @@ export default function BattleScreen({
       },
       (finalText) => {
         // onEnd fires when user taps stop (or a real error occurs)
-        const captured = finalText || liveTranscriptRef.current;
-        if (captured.trim()) {
-          setConfirmedTranscript(captured.trim());
-          setMicState("confirming");
-        } else {
+        const captured = (finalText || liveTranscriptRef.current).trim();
+        if (!captured) {
           // Nothing captured — browser likely doesn't support mic or permission was denied
           // Auto-switch to text input with a clear message
           setMicSupported(false);
           setMicState("nomic");
           setError("Voice not captured. Type your response below — this browser may not support the microphone.");
+          return;
         }
+
+        // Show "Correcting..." state immediately
+        setConfirmedTranscript(captured);
+        setMicState("confirming");
+        setIsCorrectingTranscript(true);
+
+        // Build context from last 2 messages
+        const context = messages.slice(-2).map(m => `${m.role}: ${m.text}`).join(" | ");
+
+        correctTranscript(captured, context, scenario?.text || "")
+          .then(corrected => {
+            setConfirmedTranscript(corrected);
+          })
+          .finally(() => {
+            setIsCorrectingTranscript(false);
+          });
       }
     );
 
@@ -316,6 +339,22 @@ export default function BattleScreen({
     if (!text) return;
     setIsEditing(false);
     submitUserTurn(text);
+  }
+
+  // ── Highlight-to-lexicon ────────────────────────────────────────────────
+
+  function handleTextSelection() {
+    const selection = window.getSelection();
+    const text = selection?.toString().trim();
+    if (text && text.length > 2 && text.length < 200) {
+      const range = selection.getRangeAt(0);
+      const rect = range.getBoundingClientRect();
+      setSelectedText(text);
+      setSelectionPos({ x: rect.left + rect.width / 2, y: rect.top - 8 });
+    } else {
+      setSelectedText("");
+      setSelectionPos(null);
+    }
   }
 
   function handleTextSubmit() {
@@ -423,7 +462,7 @@ export default function BattleScreen({
   const showMicSection = !sessionComplete;
 
   return (
-    <div style={styles.container}>
+    <div style={styles.container} onClick={() => { setSelectedText(""); setSelectionPos(null); }}>
       {/* Glass header */}
       <div style={styles.header}>
         <div style={styles.headerLeft}>
@@ -521,7 +560,11 @@ export default function BattleScreen({
       )}
 
       {/* Messages — scrollable */}
-      <div style={styles.messagesContainer}>
+      <div
+        style={styles.messagesContainer}
+        onMouseUp={handleTextSelection}
+        onTouchEnd={handleTextSelection}
+      >
         {messages.map((msg, i) => (
           <MessageBubble key={i} message={msg} opponent={opponent} />
         ))}
@@ -557,12 +600,22 @@ export default function BattleScreen({
           {/* Confirm state */}
           {micState === "confirming" && !isEditing && (
             <div style={styles.confirmBox}>
-              <div style={styles.confirmLabel}>What you said:</div>
-              <p style={styles.confirmText}>{confirmedTranscript}</p>
-              <div style={styles.confirmBtns}>
-                <button onClick={handleEdit} style={styles.editBtn}>Edit</button>
-                <button onClick={handleConfirm} style={styles.confirmBtn}>Looks good →</button>
-              </div>
+              <p style={styles.confirmLabel}>
+                {isCorrectingTranscript ? "✦ Cleaning up..." : "WHAT YOU SAID:"}
+              </p>
+              <p style={{
+                ...styles.confirmText,
+                opacity: isCorrectingTranscript ? 0.6 : 1,
+                transition: "opacity 0.3s",
+              }}>
+                {confirmedTranscript}
+              </p>
+              {!isCorrectingTranscript && (
+                <div style={styles.confirmBtns}>
+                  <button onClick={() => { setIsEditing(true); setEditTranscript(confirmedTranscript); }} style={styles.editBtn}>Edit</button>
+                  <button onClick={handleConfirm} style={styles.confirmBtn}>Looks good →</button>
+                </div>
+              )}
             </div>
           )}
 
@@ -675,6 +728,78 @@ export default function BattleScreen({
         <div style={styles.completeOverlay}>
           <div style={styles.completeSpinner} />
           <div style={styles.completeText}>Analysing your performance...</div>
+        </div>
+      )}
+
+      {/* Highlight-to-lexicon floating button */}
+      {selectedText && selectionPos && !savingToLexicon && !lexiconSaveSuccess && (
+        <button
+          onMouseDown={async (e) => {
+            e.preventDefault(); // prevent selection clear
+            setSavingToLexicon(true);
+            try {
+              const { enrichExpression } = await import("../lib/openrouter.js");
+              const { db } = await import("../lib/firebase.js");
+              const { collection, addDoc, serverTimestamp } = await import("firebase/firestore");
+              const enriched = await enrichExpression(selectedText);
+              await addDoc(collection(db, "users", user.uid, "lexicon"), {
+                text: selectedText,
+                source: "battle",
+                savedAt: serverTimestamp(),
+                enriched: enriched || {},
+                status: "new",
+                usedInBattles: 0,
+              });
+              setLexiconSaveSuccess(true);
+              setSelectedText("");
+              setSelectionPos(null);
+              setTimeout(() => setLexiconSaveSuccess(false), 2500);
+            } catch (err) {
+              console.error("Lexicon save error:", err);
+            } finally {
+              setSavingToLexicon(false);
+            }
+          }}
+          style={{
+            position: "fixed",
+            left: Math.min(selectionPos.x - 80, window.innerWidth - 180),
+            top: Math.max(selectionPos.y - 44, 8),
+            zIndex: 9999,
+            background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+            color: "#fff",
+            border: "none",
+            borderRadius: 20,
+            padding: "8px 16px",
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: "pointer",
+            boxShadow: "0 4px 20px rgba(99,102,241,0.5)",
+            whiteSpace: "nowrap",
+          }}
+        >
+          📖 Save to Lexicon
+        </button>
+      )}
+
+      {/* Lexicon save success toast */}
+      {lexiconSaveSuccess && (
+        <div style={{
+          position: "fixed", bottom: 80, left: "50%", transform: "translateX(-50%)",
+          background: "#10b981", color: "#fff", borderRadius: 20,
+          padding: "10px 20px", fontSize: 14, fontWeight: 600, zIndex: 9999,
+          boxShadow: "0 4px 20px rgba(16,185,129,0.4)",
+        }}>
+          ✓ Saved to Lexicon
+        </div>
+      )}
+      {savingToLexicon && (
+        <div style={{
+          position: "fixed", bottom: 80, left: "50%", transform: "translateX(-50%)",
+          background: "rgba(15,16,40,0.95)", border: "1px solid rgba(99,102,241,0.3)",
+          color: "#a5b4fc", borderRadius: 20,
+          padding: "10px 20px", fontSize: 14, fontWeight: 600, zIndex: 9999,
+        }}>
+          ✦ Enriching & saving...
         </div>
       )}
     </div>
