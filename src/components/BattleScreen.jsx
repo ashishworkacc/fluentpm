@@ -7,8 +7,6 @@ const MAX_TURNS = 3;
 
 const glassCard = {
   background: "rgba(255,255,255,0.06)",
-  backdropFilter: "blur(24px)",
-  WebkitBackdropFilter: "blur(24px)",
   border: "1px solid rgba(255,255,255,0.1)",
   borderRadius: 16,
 };
@@ -38,8 +36,6 @@ function MessageBubble({ message, opponent }) {
         border: isOpponent
           ? "1px solid rgba(255,255,255,0.1)"
           : "1px solid rgba(99,102,241,0.3)",
-        backdropFilter: "blur(12px)",
-        WebkitBackdropFilter: "blur(12px)",
       }}>
         <p style={{
           margin: 0,
@@ -574,8 +570,6 @@ const styles = {
     justifyContent: "space-between",
     padding: "14px 20px",
     background: "rgba(6,8,24,0.8)",
-    backdropFilter: "blur(20px)",
-    WebkitBackdropFilter: "blur(20px)",
     borderBottom: "1px solid rgba(255,255,255,0.08)",
     flexShrink: 0,
     zIndex: 10,
@@ -631,8 +625,6 @@ const styles = {
   micPanel: {
     flexShrink: 0,
     background: "rgba(6,8,24,0.85)",
-    backdropFilter: "blur(24px)",
-    WebkitBackdropFilter: "blur(24px)",
     borderTop: "1px solid rgba(255,255,255,0.08)",
     padding: "16px 20px 28px",
   },
@@ -958,8 +950,6 @@ const styles = {
     left: 0,
     right: 0,
     background: "rgba(6,8,24,0.92)",
-    backdropFilter: "blur(12px)",
-    WebkitBackdropFilter: "blur(12px)",
     padding: 24,
     textAlign: "center",
     borderTop: "1px solid rgba(255,255,255,0.08)",

@@ -14,8 +14,6 @@ const AGGRESSION_LABELS = {
 
 const glassCard = {
   background: "rgba(255,255,255,0.06)",
-  backdropFilter: "blur(24px)",
-  WebkitBackdropFilter: "blur(24px)",
   border: "1px solid rgba(255,255,255,0.1)",
   borderRadius: 20,
 };
@@ -178,8 +176,6 @@ const styles = {
     position: "sticky",
     top: 0,
     background: "rgba(6,8,24,0.7)",
-    backdropFilter: "blur(20px)",
-    WebkitBackdropFilter: "blur(20px)",
     borderBottom: "1px solid rgba(255,255,255,0.06)",
     zIndex: 10,
   },

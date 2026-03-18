@@ -3,6 +3,15 @@ import { doc, addDoc, collection, updateDoc, getDoc, setDoc, increment } from "f
 import { db } from "../lib/firebase.js";
 import { getRankFromXP } from "../hooks/useProgress.js";
 
+// Keep localStorage cache in sync so HomeScreen loads instantly next time
+function updateProfileCache(uid, updates) {
+  try {
+    const key = `fluentpm_profile_${uid}`;
+    const existing = JSON.parse(localStorage.getItem(key) || "{}");
+    localStorage.setItem(key, JSON.stringify({ ...existing, ...updates }));
+  } catch {}
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function getScoreLabel(score) {
@@ -35,8 +44,6 @@ function getTodayDateString() {
 
 const glassCard = {
   background: "rgba(255,255,255,0.06)",
-  backdropFilter: "blur(24px)",
-  WebkitBackdropFilter: "blur(24px)",
   border: "1px solid rgba(255,255,255,0.1)",
   borderRadius: 18,
 };
@@ -168,13 +175,15 @@ export default function FeedbackScreen({ user, sessionData, opponent, setCurrent
           const newXP = (current.xp || 0) + (sd.xp || 0);
           const newRank = getRankFromXP(newXP);
 
-          await updateDoc(profileRef, {
+          const profileUpdate = {
             xp: newXP,
             rank: newRank,
             streak: newStreak,
             lastPlayedDate: today,
-            sessionsCount: increment(1),
-          });
+            sessionsCount: (current.sessionsCount || 0) + 1,
+          };
+          await updateDoc(profileRef, { ...profileUpdate, sessionsCount: increment(1) });
+          updateProfileCache(user.uid, profileUpdate); // keep local cache fresh
         } else {
           await setDoc(profileRef, {
             xp: sd.xp || 0,
@@ -575,8 +584,6 @@ const styles = {
     fontSize: 14,
     fontWeight: 700,
     cursor: "pointer",
-    backdropFilter: "blur(12px)",
-    WebkitBackdropFilter: "blur(12px)",
   },
   homeBtn: {
     flex: 2,

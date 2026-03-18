@@ -59,13 +59,27 @@ const DEFAULT_PROFILE = {
   createdAt: new Date().toISOString(),
 };
 
-// ── Glass card shared style ──────────────────────────────────────────────────
+// ── Cache helpers ─────────────────────────────────────────────────────────────
+
+const CACHE_KEY = (uid) => `fluentpm_profile_${uid}`;
+
+function readCache(uid) {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY(uid));
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+function writeCache(uid, data) {
+  try { localStorage.setItem(CACHE_KEY(uid), JSON.stringify(data)); } catch {}
+}
+
+// ── Glass card shared style ────────────────────────────────────────────────
+// backdrop-filter removed — GPU-heavy and causes jank on most devices
 
 const glassCard = {
-  background: "rgba(255,255,255,0.06)",
-  backdropFilter: "blur(24px)",
-  WebkitBackdropFilter: "blur(24px)",
-  border: "1px solid rgba(255,255,255,0.1)",
+  background: "rgba(15,16,40,0.82)",
+  border: "1px solid rgba(255,255,255,0.08)",
   borderRadius: 20,
 };
 
@@ -217,37 +231,36 @@ function DailyChallengeCard({ opponent, scenario, onEnterArena }) {
 // ── Main Component ────────────────────────────────────────────────────────────
 
 export default function HomeScreen({ user, setCurrentScreen, setPreBattleData }) {
-  const [profile, setProfile] = useState(null);
-  const [loadingProfile, setLoadingProfile] = useState(true);
-  const [todayDone, setTodayDone] = useState(false);
-
-  const { opponent: dailyOpponent, scenario: dailyScenario } = getDailyChallenge();
   const today = getTodayDateString();
 
-  // Load profile from Firestore
+  // ── Step 1: load from localStorage instantly (sync, zero wait) ────────────
+  const cached = readCache(user.uid);
+  const [profile, setProfile] = useState(cached || DEFAULT_PROFILE);
+  const [todayDone, setTodayDone] = useState(cached?.lastPlayedDate === today);
+
+  const { opponent: dailyOpponent, scenario: dailyScenario } = getDailyChallenge();
+
+  // ── Step 2: fetch Firestore silently in the background ────────────────────
   useEffect(() => {
-    async function loadProfile() {
+    async function syncFromFirestore() {
       try {
         const ref = doc(db, "users", user.uid, "profile", "main");
         const snap = await getDoc(ref);
         if (snap.exists()) {
           const data = snap.data();
           setProfile(data);
-          if (data.lastPlayedDate === today) {
-            setTodayDone(true);
-          }
+          setTodayDone(data.lastPlayedDate === today);
+          writeCache(user.uid, data);        // keep cache fresh
         } else {
           await setDoc(ref, DEFAULT_PROFILE);
-          setProfile(DEFAULT_PROFILE);
+          writeCache(user.uid, DEFAULT_PROFILE);
         }
       } catch (err) {
-        console.error("Error loading profile:", err);
-        setProfile(DEFAULT_PROFILE);
-      } finally {
-        setLoadingProfile(false);
+        // Network issue — cached data already shown, silently ignore
+        console.warn("Firestore sync failed, using cached profile:", err.message);
       }
     }
-    loadProfile();
+    syncFromFirestore();
   }, [user.uid, today]);
 
   const progress = useProgress(profile || DEFAULT_PROFILE);
@@ -270,14 +283,6 @@ export default function HomeScreen({ user, setCurrentScreen, setPreBattleData })
     daysSince >= 1;
 
   const firstName = user.displayName ? user.displayName.split(" ")[0] : "";
-
-  if (loadingProfile) {
-    return (
-      <div style={styles.container}>
-        <div style={styles.loadingText}>Loading your profile...</div>
-      </div>
-    );
-  }
 
   return (
     <div style={styles.container}>
