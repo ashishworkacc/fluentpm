@@ -161,6 +161,29 @@ function SectionLabel({ children, color }) {
 export default function FeedbackScreen({ user, sessionData, opponent, setCurrentScreen }) {
   const [selfRating, setSelfRating] = useState(0);
   const hasSaved = useRef(false);
+  const [savedPhrases, setSavedPhrases] = useState({});
+
+  async function saveToLexicon(phrase) {
+    if (!phrase || savedPhrases[phrase]) return;
+    setSavedPhrases(prev => ({ ...prev, [phrase]: "saving" }));
+    try {
+      const { enrichExpression } = await import("../lib/openrouter.js");
+      const { serverTimestamp } = await import("firebase/firestore");
+      const enriched = await enrichExpression(phrase);
+      await addDoc(collection(db, "users", user.uid, "lexicon"), {
+        text: phrase,
+        source: "battle_feedback",
+        savedAt: serverTimestamp(),
+        enriched: enriched || {},
+        status: "new",
+        usedInBattles: 0,
+      });
+      setSavedPhrases(prev => ({ ...prev, [phrase]: "saved" }));
+    } catch (err) {
+      console.error("Save to lexicon error:", err);
+      setSavedPhrases(prev => ({ ...prev, [phrase]: null }));
+    }
+  }
 
   const sd = sessionData;
 
@@ -203,7 +226,8 @@ export default function FeedbackScreen({ user, sessionData, opponent, setCurrent
           const yesterdayStr = yesterday.toISOString().slice(0, 10);
 
           const newStreak = lastPlayed === yesterdayStr ? (current.streak || 0) + 1 : 1;
-          const newXP = (current.xp || 0) + (sd.xp || 0);
+          const xpToAdd = sd.xp || (sd.score ? Math.round(15 + ((Math.min(10, sd.score || 5) - 4) / 6) * 35) : 20);
+          const newXP = (current.xp || 0) + xpToAdd;
           const newRank = getRankFromXP(newXP);
 
           const profileUpdate = {
@@ -216,8 +240,9 @@ export default function FeedbackScreen({ user, sessionData, opponent, setCurrent
           await updateDoc(profileRef, { ...profileUpdate, sessionsCount: increment(1) });
           updateProfileCache(user.uid, profileUpdate); // keep local cache fresh
         } else {
+          const xpToAdd = sd.xp || (sd.score ? Math.round(15 + ((Math.min(10, sd.score || 5) - 4) / 6) * 35) : 20);
           await setDoc(profileRef, {
-            xp: sd.xp || 0,
+            xp: xpToAdd,
             rank: getRankFromXP(sd.xp || 0),
             streak: 1,
             lastPlayedDate: today,
@@ -362,9 +387,26 @@ export default function FeedbackScreen({ user, sessionData, opponent, setCurrent
             <SectionLabel color="#06b6d4">USE THESE NEXT TIME</SectionLabel>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {sd.powerPhrases.map((phrase, i) => (
-                <div key={i} style={styles.powerPhraseItem}>
-                  <span style={styles.powerPhraseNum}>{i + 1}.</span>
-                  <span style={styles.powerPhrase}>"{phrase}"</span>
+                <div key={i} style={{ ...styles.powerPhraseItem, justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "baseline", flex: 1 }}>
+                    <span style={styles.powerPhraseNum}>{i + 1}.</span>
+                    <span style={styles.powerPhrase}>"{phrase}"</span>
+                  </div>
+                  {savedPhrases[phrase] === "saved" ? (
+                    <span style={{ fontSize: 12, color: "#10b981", fontWeight: 700, marginLeft: 8 }}>✓</span>
+                  ) : (
+                    <button
+                      onClick={() => saveToLexicon(phrase)}
+                      disabled={savedPhrases[phrase] === "saving"}
+                      style={{
+                        background: "rgba(99,102,241,0.15)", border: "1px solid rgba(99,102,241,0.3)",
+                        borderRadius: 8, padding: "3px 10px", fontSize: 12, color: "#a5b4fc",
+                        cursor: "pointer", marginLeft: 8, flexShrink: 0,
+                      }}
+                    >
+                      {savedPhrases[phrase] === "saving" ? "..." : "+ Save"}
+                    </button>
+                  )}
                 </div>
               ))}
             </div>

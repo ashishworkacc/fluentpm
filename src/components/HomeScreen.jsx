@@ -8,24 +8,35 @@ import { getCoachingProfile } from "../lib/coachingProfile.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Deterministic seeded random using today's date string */
-function seededRandom(seed) {
-  let h = 0;
-  for (let i = 0; i < seed.length; i++) {
-    h = (Math.imul(31, h) + seed.charCodeAt(i)) | 0;
-  }
-  return Math.abs(h);
-}
-
 function getTodayDateString() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function getDailyChallenge() {
-  const today = getTodayDateString();
-  const seed = seededRandom(today);
-  const opponent = OPPONENTS[seed % OPPONENTS.length];
-  const scenario = SCENARIOS[(seed * 7) % SCENARIOS.length];
+function getDailyChallenge(uid) {
+  // Get recent history
+  const recentScenarios = JSON.parse(localStorage.getItem(`fluentpm_recent_scenarios_${uid}`) || "[]");
+  const recentOpponents = JSON.parse(localStorage.getItem(`fluentpm_recent_opponents_${uid}`) || "[]");
+
+  // Filter out recently seen scenarios
+  const freshScenarios = SCENARIOS.filter(s => !recentScenarios.includes(s.id));
+  const pool = freshScenarios.length >= 5 ? freshScenarios : SCENARIOS;
+
+  // Pick random scenario
+  const scenario = pool[Math.floor(Math.random() * pool.length)];
+
+  // Pick opponent not seen recently
+  const freshOpponents = OPPONENTS.filter(o => !recentOpponents.includes(o.id));
+  const opponentPool = freshOpponents.length >= 2 ? freshOpponents : OPPONENTS;
+  const opponent = opponentPool[Math.floor(Math.random() * opponentPool.length)];
+
+  // Save to history (keep last 15 scenarios, last 2 opponents)
+  const newScenarios = [scenario.id, ...recentScenarios].slice(0, 15);
+  const newOpponents = [opponent.id, ...recentOpponents].slice(0, 2);
+  try {
+    localStorage.setItem(`fluentpm_recent_scenarios_${uid}`, JSON.stringify(newScenarios));
+    localStorage.setItem(`fluentpm_recent_opponents_${uid}`, JSON.stringify(newOpponents));
+  } catch {}
+
   return { opponent, scenario };
 }
 
@@ -177,7 +188,7 @@ function DailyChallengeDoneCard({ onRematch }) {
   );
 }
 
-function DailyChallengeCard({ opponent, scenario, onEnterArena }) {
+function DailyChallengeCard({ opponent, scenario, onEnterArena, onShuffle }) {
   const diffColor = DIFFICULTY_COLORS[scenario.difficulty] || "#94a3b8";
   const xpRange = scenario.difficulty === "easy"
     ? "15–25 XP"
@@ -222,9 +233,20 @@ function DailyChallengeCard({ opponent, scenario, onEnterArena }) {
       <div style={styles.challengeFooter}>
         <span style={styles.xpRange}>⚡ {xpRange}</span>
       </div>
-      <button onClick={onEnterArena} style={styles.enterArenaBtn}>
-        Enter Arena →
-      </button>
+      <div style={{ display: "flex", gap: 8 }}>
+        <button onClick={onEnterArena} style={{ ...styles.enterArenaBtn, flex: 3 }}>
+          Enter Arena →
+        </button>
+        {onShuffle && (
+          <button onClick={onShuffle} style={{
+            flex: 1, height: 52, background: "rgba(255,255,255,0.06)", color: "#94a3b8",
+            border: "1px solid rgba(255,255,255,0.1)", borderRadius: 14, fontSize: 18,
+            fontWeight: 700, cursor: "pointer",
+          }} title="Shuffle challenge">
+            🔀
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -241,7 +263,8 @@ export default function HomeScreen({ user, setCurrentScreen, setPreBattleData, s
   const [expressionsDueCount, setExpressionsDueCount] = useState(0);
   const [decayApplied, setDecayApplied] = useState(false);
 
-  const { opponent: dailyOpponent, scenario: dailyScenario } = getDailyChallenge();
+  const [dailyChallenge, setDailyChallenge] = useState(() => getDailyChallenge(user.uid));
+  const { opponent: dailyOpponent, scenario: dailyScenario } = dailyChallenge;
 
   // ── Step 2: fetch Firestore silently in the background ────────────────────
   useEffect(() => {
@@ -440,6 +463,7 @@ export default function HomeScreen({ user, setCurrentScreen, setPreBattleData, s
           opponent={dailyOpponent}
           scenario={dailyScenario}
           onEnterArena={handleEnterArena}
+          onShuffle={() => setDailyChallenge(getDailyChallenge(user.uid))}
         />
       )}
 

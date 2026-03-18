@@ -7,6 +7,7 @@ import { cancelSpeech } from "../lib/speechSynthesis.js";
 import { INTERVIEW_TYPES } from "../data/interviewers.js";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../lib/firebase.js";
+import { addToQuestionHistory } from "../lib/questionHistory.js";
 
 const MAX_TURNS = 5;
 
@@ -132,6 +133,7 @@ export default function InterviewScreen({
   const [micSupported, setMicSupported] = useState(true);
   const [textInput, setTextInput] = useState("");
   const [isCorrectingTranscript, setIsCorrectingTranscript] = useState(false);
+  const [showSkipBtn, setShowSkipBtn] = useState(false);
 
   // Filler analysis
   const [fillerCounts, setFillerCounts] = useState({});
@@ -175,6 +177,11 @@ export default function InterviewScreen({
     if (hasInitialised.current) return;
     if (!interviewer || !question) return;
     hasInitialised.current = true;
+
+    // Track this question in history for variety
+    if (user?.uid && question) {
+      addToQuestionHistory(user.uid, question.id || question.text?.slice(0, 30));
+    }
 
     async function getOpener() {
       setIsTyping(true);
@@ -364,13 +371,16 @@ export default function InterviewScreen({
         // Set BEFORE triggering speech to avoid race condition
         pendingFeedbackRef.current = true;
 
-        // Safety timeout — if speech never ends, force navigate after 30s
+        // Safety timeout — if speech never ends, force navigate after 8s
         safetyTimerRef.current = setTimeout(() => {
           if (pendingFeedbackRef.current) {
             pendingFeedbackRef.current = false;
             setCurrentScreen("interviewFeedback");
           }
-        }, 30000);
+        }, 8000);
+
+        // Show skip button after 3s in case speech doesn't start
+        setTimeout(() => setShowSkipBtn(true), 3000);
 
         if (!cleanReply || voiceMuted) {
           setTimeout(() => setCurrentScreen("interviewFeedback"), 1500);
@@ -624,6 +634,13 @@ export default function InterviewScreen({
         <div style={styles.completeOverlay}>
           <div style={styles.completeSpinner} />
           <div style={styles.completeText}>Preparing your debrief...</div>
+          {showSkipBtn && (
+            <button onClick={() => { pendingFeedbackRef.current = false; setCurrentScreen("interviewFeedback"); }}
+              style={{ marginTop: 16, padding: "10px 24px", background: "#6366f1", color: "#fff",
+                       border: "none", borderRadius: 10, fontSize: 14, cursor: "pointer" }}>
+              Go to feedback →
+            </button>
+          )}
         </div>
       )}
 

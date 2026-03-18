@@ -190,6 +190,7 @@ export default function BattleScreen({
 
   // AI transcript correction
   const [isCorrectingTranscript, setIsCorrectingTranscript] = useState(false);
+  const [showSkipBtn, setShowSkipBtn] = useState(false);
 
   // Highlight-to-lexicon
   const [selectedText, setSelectedText] = useState("");
@@ -449,13 +450,16 @@ export default function BattleScreen({
         // Set BEFORE triggering speech to avoid race condition
         pendingFeedbackRef.current = true;
 
-        // Safety timeout — if speech never ends, force navigate after 30s
+        // Safety timeout — if speech never ends, force navigate after 8s
         safetyTimerRef.current = setTimeout(() => {
           if (pendingFeedbackRef.current) {
             pendingFeedbackRef.current = false;
             setCurrentScreen("feedback");
           }
-        }, 30000);
+        }, 8000);
+
+        // Show skip button after 3s in case speech doesn't start
+        setTimeout(() => setShowSkipBtn(true), 3000);
 
         // If not speaking (muted or no reply), navigate after short delay
         if (!cleanReply || voiceMuted) {
@@ -764,6 +768,13 @@ export default function BattleScreen({
         <div style={styles.completeOverlay}>
           <div style={styles.completeSpinner} />
           <div style={styles.completeText}>Analysing your performance...</div>
+          {showSkipBtn && (
+            <button onClick={() => { pendingFeedbackRef.current = false; setCurrentScreen("feedback"); }}
+              style={{ marginTop: 16, padding: "10px 24px", background: "#6366f1", color: "#fff",
+                       border: "none", borderRadius: 10, fontSize: 14, cursor: "pointer" }}>
+              Go to feedback →
+            </button>
+          )}
         </div>
       )}
 

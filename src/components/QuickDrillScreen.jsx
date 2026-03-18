@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { startRecognition } from "../lib/speechRecognition.js";
+import { buildQuickDrillPrompt } from "../lib/openrouter.js";
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 const MODEL = "deepseek/deepseek-chat";
@@ -95,21 +96,10 @@ Return ONLY the question text. No explanation. No formatting. Max 30 words.`;
   }
 }
 
-async function scoreAnswer(question, transcript) {
-  const prompt = `You are evaluating a single PM interview answer. Be brief and direct.
-Question: "${question}"
-User's answer: "${transcript}"
-
-Return ONLY valid JSON (no markdown):
-{
-  "score": 3,
-  "strength": "one sentence on what worked",
-  "improvement": "one specific thing to change next time",
-  "rootCause": "GENERIC_SAFETY"
-}
-
-score must be 1-5. Default assumption: most answers score 2-3.
-rootCause must be ONE of: WE_FRAMING | CONFLICT_AVOIDANCE | STATUS_ANXIETY | NARRATIVE_OVERLOAD | GENERIC_SAFETY | DIRECTNESS_GAP | STRUCTURE_COLLAPSE | METRIC_AVOIDANCE | none`;
+async function scoreAnswer(questionType, question, transcript) {
+  // Clean transcript before scoring
+  const cleanedTranscript = transcript.replace(/\s+/g, " ").trim();
+  const prompt = buildQuickDrillPrompt(questionType, question, cleanedTranscript);
 
   try {
     const res = await fetch(OPENROUTER_API_URL, {
@@ -210,8 +200,8 @@ export default function QuickDrillScreen({ user, setCurrentScreen }) {
       return;
     }
     setPhase("scoring");
-    const scored = await scoreAnswer(question, captured);
-    setResult(scored || { score: 1, strength: "Could not evaluate.", improvement: "Try again.", rootCause: "none" });
+    const scored = await scoreAnswer(selectedType || "behavioral", question, captured);
+    setResult(scored || { score: 1, scoreLabel: "Very Weak", strength: "Could not evaluate.", improvement: "Try again.", rootCause: "none", betterOpener: "", naturalnessFlagged: "", naturalAlternative: "" });
     setPhase("results");
   }
 
@@ -344,20 +334,26 @@ export default function QuickDrillScreen({ user, setCurrentScreen }) {
           <div style={styles.title}>Quick Drill Results</div>
         </div>
 
-        <div style={{ ...glassCard, padding: "24px 22px", marginBottom: 16, textAlign: "center" }}>
-          <div style={{ fontSize: 52, fontWeight: 800, color: scoreColor, lineHeight: 1, marginBottom: 4 }}>
-            {result.score}/5
+        {/* Score bar */}
+        <div style={{ ...glassCard, padding: "20px 22px", marginBottom: 16, textAlign: "center" }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+            <div style={{
+              fontSize: 40, fontWeight: 800, color: scoreColor, lineHeight: 1,
+              background: `${scoreColor}18`, padding: "8px 20px", borderRadius: 12,
+            }}>
+              {result.score}/5
+            </div>
+            {result.scoreLabel && (
+              <div style={{ fontSize: 16, fontWeight: 700, color: scoreColor }}>{result.scoreLabel}</div>
+            )}
           </div>
-          <div style={{ fontSize: 13, color: "#64748b" }}>Overall score</div>
         </div>
 
+        {/* Strength */}
         {result.strength && (
           <div style={{
-            ...glassCard,
-            padding: "16px 18px",
-            marginBottom: 12,
-            background: "rgba(16,185,129,0.05)",
-            border: "1px solid rgba(16,185,129,0.2)",
+            ...glassCard, padding: "16px 18px", marginBottom: 12,
+            background: "rgba(16,185,129,0.05)", border: "1px solid rgba(16,185,129,0.2)",
           }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: "#10b981", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.5px" }}>
               What worked
@@ -366,47 +362,68 @@ export default function QuickDrillScreen({ user, setCurrentScreen }) {
           </div>
         )}
 
+        {/* Improvement */}
         {result.improvement && (
           <div style={{
-            ...glassCard,
-            padding: "16px 18px",
-            marginBottom: 12,
-            background: "rgba(245,158,11,0.05)",
-            border: "1px solid rgba(245,158,11,0.2)",
+            ...glassCard, padding: "16px 18px", marginBottom: 12,
+            background: "rgba(245,158,11,0.05)", border: "1px solid rgba(245,158,11,0.2)",
           }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: "#f59e0b", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.5px" }}>
-              Improve next time
+              What to fix
             </div>
             <div style={{ fontSize: 14, color: "#94a3b8", lineHeight: 1.6 }}>{result.improvement}</div>
           </div>
         )}
 
-        {rootCauseLabel && (
+        {/* Better Opener */}
+        {result.betterOpener && (
           <div style={{
-            ...glassCard,
-            padding: "14px 18px",
-            marginBottom: 20,
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
+            ...glassCard, padding: "16px 18px", marginBottom: 12,
+            background: "rgba(99,102,241,0.05)", border: "1px solid rgba(99,102,241,0.2)",
+          }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#818cf8", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+              Stronger way to start
+            </div>
+            <div style={{ fontSize: 14, color: "#a5b4fc", lineHeight: 1.6, fontStyle: "italic" }}>"{result.betterOpener}"</div>
+          </div>
+        )}
+
+        {/* Root cause pill */}
+        {rootCauseLabel && result.rootCause !== "none" && (
+          <div style={{
+            ...glassCard, padding: "12px 16px", marginBottom: 12,
+            display: "flex", alignItems: "center", gap: 10,
           }}>
             <span style={{ fontSize: 12, color: "#64748b" }}>Pattern detected:</span>
-            <span style={{
-              fontSize: 12,
-              fontWeight: 700,
-              padding: "3px 10px",
-              borderRadius: 20,
-              background: "rgba(245,158,11,0.12)",
-              color: "#f59e0b",
-            }}>
+            <span style={{ fontSize: 12, fontWeight: 700, padding: "3px 10px", borderRadius: 20, background: "rgba(245,158,11,0.12)", color: "#f59e0b" }}>
               {rootCauseLabel}
             </span>
           </div>
         )}
 
+        {/* Naturalness flag */}
+        {result.naturalnessFlagged && (
+          <div style={{
+            ...glassCard, padding: "16px 18px", marginBottom: 20,
+            background: "rgba(245,158,11,0.04)", border: "1px solid rgba(245,158,11,0.2)",
+          }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#f59e0b", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+              Naturalness flag
+            </div>
+            <div style={{ fontSize: 13, color: "#94a3b8", marginBottom: 6 }}>
+              You said: <em>"{result.naturalnessFlagged}"</em>
+            </div>
+            {result.naturalAlternative && (
+              <div style={{ fontSize: 13, color: "#cbd5e1" }}>
+                Say instead: <strong>"{result.naturalAlternative}"</strong>
+              </div>
+            )}
+          </div>
+        )}
+
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <button onClick={handleNextQuestion} style={styles.primaryBtn}>
-            Another question →
+            Try Another →
           </button>
           <button onClick={() => setCurrentScreen("interviewHome")} style={styles.secondaryBtn}>
             Back to Interview Home

@@ -590,6 +590,37 @@ export async function sendInterviewMessage(messages, interviewer, question, ques
   return { reply, interviewFeedback };
 }
 
+// ── Quick Drill Scoring ───────────────────────────────────────────────────────
+
+export function buildQuickDrillPrompt(questionType, question, transcript) {
+  return `${LANGUAGE_REGISTER_RULES}
+
+You are a senior PM interviewer evaluating a practice answer. Be direct, specific, and honest.
+
+Question type: ${questionType}
+Question: "${question}"
+Candidate's answer: "${transcript}"
+
+SCORING ANCHORS:
+1 = Very weak — no structure, no substance, very vague
+2 = Below average — some attempt but missing key elements
+3 = Average — decent but generic, lacks specifics
+4 = Strong — clear structure, specific examples, confident language
+5 = Exceptional — would impress a senior interviewer
+
+Return ONLY valid JSON:
+{
+  "score": 1-5,
+  "scoreLabel": "Very Weak | Below Average | Average | Strong | Exceptional",
+  "strength": "one specific sentence quoting what they said that worked",
+  "improvement": "one specific sentence on the single biggest thing to change",
+  "rootCause": "WE_FRAMING | CONFLICT_AVOIDANCE | STATUS_ANXIETY | NARRATIVE_OVERLOAD | GENERIC_SAFETY | DIRECTNESS_GAP | STRUCTURE_COLLAPSE | METRIC_AVOIDANCE | none",
+  "betterOpener": "rewrite just the first sentence of their answer to be stronger",
+  "naturalnessFlagged": "the most unnatural phrase they used, or empty string",
+  "naturalAlternative": "how a fluent speaker would say that, or empty string"
+}`;
+}
+
 export async function scoreLightningRound(
   targetExpression,
   variantToUse,

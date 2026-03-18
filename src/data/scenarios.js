@@ -427,5 +427,132 @@ export const SCENARIOS = [
     text: "The app store rating dropped from 4.3 to 3.6 in one week. Almost all negative reviews are about the new checkout flow your team shipped. Own this.",
     difficulty: "hard",
     suggestedFramework: "CAR"
+  },
+
+  // ── GENERAL FLUENCY (25) — everyday professional + social situations ──────────
+  {
+    id: "gf_01", situationType: "general", difficulty: "easy",
+    text: "You're running 20 minutes late to an important in-person meeting. Call the organiser and explain.",
+    suggestedFramework: "PSB"
+  },
+  {
+    id: "gf_02", situationType: "general", difficulty: "easy",
+    text: "A colleague you don't know well asks you to explain what you do at the company. Keep it natural.",
+    suggestedFramework: null
+  },
+  {
+    id: "gf_03", situationType: "general", difficulty: "medium",
+    text: "You disagree with a decision made by your manager in a team meeting. Raise it respectfully right now.",
+    suggestedFramework: "PREP"
+  },
+  {
+    id: "gf_04", situationType: "general", difficulty: "medium",
+    text: "Someone on your team has been missing deadlines and it's affecting you. Have the conversation.",
+    suggestedFramework: "PSB"
+  },
+  {
+    id: "gf_05", situationType: "general", difficulty: "hard",
+    text: "You are at a networking event and someone senior asks: 'So what are you working on that's interesting?'",
+    suggestedFramework: null
+  },
+  {
+    id: "gf_06", situationType: "general", difficulty: "easy",
+    text: "Your cross-functional partner from another team says your team's work is blocking theirs. Respond calmly.",
+    suggestedFramework: "CAR"
+  },
+  {
+    id: "gf_07", situationType: "general", difficulty: "medium",
+    text: "You need to ask your manager for a week off at short notice. Make the ask.",
+    suggestedFramework: null
+  },
+  {
+    id: "gf_08", situationType: "general", difficulty: "hard",
+    text: "In a team retrospective, someone publicly blames your feature for the sprint failure. Respond.",
+    suggestedFramework: "PSB"
+  },
+  {
+    id: "gf_09", situationType: "general", difficulty: "easy",
+    text: "Introduce yourself to a new team of 8 people on your first day. Keep it warm but professional.",
+    suggestedFramework: null
+  },
+  {
+    id: "gf_10", situationType: "general", difficulty: "medium",
+    text: "Your manager gives you critical feedback that you feel is unfair. Respond without getting defensive.",
+    suggestedFramework: "PREP"
+  },
+  {
+    id: "gf_11", situationType: "general", difficulty: "medium",
+    text: "A client asks why the project is delayed by two weeks. Give a clear, honest answer.",
+    suggestedFramework: "CAR"
+  },
+  {
+    id: "gf_12", situationType: "general", difficulty: "hard",
+    text: "You are asked to present your team's quarterly results to an audience who expected better numbers.",
+    suggestedFramework: "PREP"
+  },
+  {
+    id: "gf_13", situationType: "general", difficulty: "easy",
+    text: "Someone asks you for your honest opinion of a presentation that you thought was weak.",
+    suggestedFramework: null
+  },
+  {
+    id: "gf_14", situationType: "general", difficulty: "medium",
+    text: "You are in a job interview and they ask: 'Why are you leaving your current role?'",
+    suggestedFramework: "PSB"
+  },
+  {
+    id: "gf_15", situationType: "general", difficulty: "hard",
+    text: "You made an error that caused a production incident. Explain it to your leadership team.",
+    suggestedFramework: "CAR"
+  },
+  {
+    id: "gf_16", situationType: "general", difficulty: "medium",
+    text: "A peer asks you to take on extra work when you're already at capacity. Decline gracefully.",
+    suggestedFramework: null
+  },
+  {
+    id: "gf_17", situationType: "general", difficulty: "easy",
+    text: "Explain a complex technical project you're working on to someone from finance who has no tech background.",
+    suggestedFramework: "PSB"
+  },
+  {
+    id: "gf_18", situationType: "general", difficulty: "medium",
+    text: "You want to ask for a salary raise. You're in your manager's office. Make the case.",
+    suggestedFramework: "PREP"
+  },
+  {
+    id: "gf_19", situationType: "general", difficulty: "hard",
+    text: "Your company is going through layoffs. A worried team member asks if their job is safe. Respond honestly.",
+    suggestedFramework: null
+  },
+  {
+    id: "gf_20", situationType: "general", difficulty: "medium",
+    text: "You are chairing a meeting that has gone off-track. Bring it back to the agenda without embarrassing anyone.",
+    suggestedFramework: null
+  },
+  {
+    id: "gf_21", situationType: "general", difficulty: "easy",
+    text: "Someone praises your work publicly in a meeting. Respond in a way that's confident but not arrogant.",
+    suggestedFramework: null
+  },
+  {
+    id: "gf_22", situationType: "general", difficulty: "medium",
+    text: "You are giving feedback to a junior team member whose work is below standard. Be direct but kind.",
+    suggestedFramework: "PSB"
+  },
+  {
+    id: "gf_23", situationType: "general", difficulty: "hard",
+    text: "Two senior stakeholders disagree in a meeting and both turn to you to resolve it. What do you say?",
+    suggestedFramework: "PREP"
+  },
+  {
+    id: "gf_24", situationType: "general", difficulty: "easy",
+    text: "You've just joined a video call that started without you. Catch up and contribute within your first 2 minutes.",
+    suggestedFramework: null
+  },
+  {
+    id: "gf_25", situationType: "general", difficulty: "medium",
+    text: "You need to push back on a timeline your manager just committed to a client without consulting you.",
+    suggestedFramework: "PSB"
   }
 ];

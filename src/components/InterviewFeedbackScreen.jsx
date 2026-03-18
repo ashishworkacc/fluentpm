@@ -1,4 +1,6 @@
+import { useState, useEffect } from "react";
 import { INTERVIEW_TYPES } from "../data/interviewers.js";
+import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 
 // ── Glass card ────────────────────────────────────────────────────────────────
 
@@ -58,6 +60,8 @@ function ScoreBar({ label, score, color }) {
 
 // ── Main Component ─────────────────────────────────────────────────────────────
 
+const verdictXP = { "Strong Hire": 50, "Hire": 35, "No Hire": 15, "Strong No Hire": 10 };
+
 export default function InterviewFeedbackScreen({
   user,
   interviewData,
@@ -65,6 +69,37 @@ export default function InterviewFeedbackScreen({
   selfScores,
   setCurrentScreen,
 }) {
+  useEffect(() => {
+    if (!user || !interviewFeedback) return;
+    const feedback = interviewFeedback;
+    const xpEarned = verdictXP[feedback.verdict] || 20;
+
+    async function updateXP() {
+      try {
+        const { doc, getDoc, updateDoc, setDoc, increment } = await import("firebase/firestore");
+        const { db } = await import("../lib/firebase.js");
+        const { getRankFromXP } = await import("../hooks/useProgress.js");
+        const profileRef = doc(db, "users", user.uid, "profile", "main");
+        const snap = await getDoc(profileRef);
+        const today = new Date().toISOString().slice(0, 10);
+        if (snap.exists()) {
+          const cur = snap.data();
+          const newXP = (cur.xp || 0) + xpEarned;
+          const newRank = getRankFromXP(newXP);
+          await updateDoc(profileRef, { xp: newXP, rank: newRank, lastPlayedDate: today, sessionsCount: increment(1) });
+          try {
+            const cached = JSON.parse(localStorage.getItem(`fluentpm_profile_${user.uid}`) || "{}");
+            localStorage.setItem(`fluentpm_profile_${user.uid}`, JSON.stringify({ ...cached, xp: newXP, rank: newRank, lastPlayedDate: today }));
+          } catch {}
+        } else {
+          const { getRankFromXP: getRank } = await import("../hooks/useProgress.js");
+          await setDoc(profileRef, { xp: xpEarned, rank: getRank(xpEarned), streak: 1, lastPlayedDate: today, sessionsCount: 1 });
+        }
+      } catch (e) { console.error("XP update error:", e); }
+    }
+    updateXP();
+  }, [user?.uid, interviewFeedback?.verdict]);
+
   if (!interviewFeedback || !interviewData) {
     return (
       <div style={{ padding: 32, textAlign: "center", color: "#94a3b8" }}>
@@ -103,6 +138,37 @@ export default function InterviewFeedbackScreen({
 
   const rootCauseInfo = ROOT_CAUSES[rootCause] || null;
 
+  const [phrasesSaving, setPhrasesSaving] = useState(false);
+  const [phrasesSaved, setPhrasesSaved] = useState(false);
+
+  async function savePhrasesToLexicon() {
+    if (!sampleStrongAnswer || phrasesSaving || phrasesSaved) return;
+    setPhrasesSaving(true);
+    try {
+      const sentences = sampleStrongAnswer.split(". ").filter(Boolean).slice(0, 2);
+      const { enrichExpression } = await import("../lib/openrouter.js");
+      const { db } = await import("../lib/firebase.js");
+      for (const phrase of sentences) {
+        const clean = phrase.trim().replace(/\.$/, "");
+        if (clean.length < 10) continue;
+        const enriched = await enrichExpression(clean);
+        await addDoc(collection(db, "users", user.uid, "lexicon"), {
+          text: clean,
+          source: "interview_feedback",
+          savedAt: serverTimestamp(),
+          enriched: enriched || {},
+          status: "new",
+          usedInBattles: 0,
+        });
+      }
+      setPhrasesSaved(true);
+    } catch (e) {
+      console.error("Save phrases error:", e);
+    } finally {
+      setPhrasesSaving(false);
+    }
+  }
+
   // Dimension comparison data
   const dimensions = [
     { label: "Product Sense", aiScore: productSense, selfScore: selfScores?.productSense, color: "#6366f1" },
@@ -116,6 +182,10 @@ export default function InterviewFeedbackScreen({
 
   return (
     <div style={styles.container}>
+      {/* Home button */}
+      <button onClick={() => setCurrentScreen("home")} style={{ background: "none", border: "none", color: "#94a3b8", fontSize: 14, cursor: "pointer", padding: "8px 0", display: "flex", alignItems: "center", gap: 6, marginBottom: 12 }}>
+        ← Home
+      </button>
       {/* Verdict Hero */}
       <div style={{
         ...glassCard,
@@ -132,10 +202,18 @@ export default function InterviewFeedbackScreen({
           {verdictConfig.icon} {verdictConfig.label}
         </div>
         {verdictReason && (
-          <div style={{ fontSize: 14, color: "#94a3b8", lineHeight: 1.6, maxWidth: 480, margin: "0 auto 16px" }}>
+          <div style={{ fontSize: 14, color: "#94a3b8", lineHeight: 1.6, maxWidth: 480, margin: "0 auto 12px" }}>
             {verdictReason}
           </div>
         )}
+        <div style={{
+          display: "inline-flex", alignItems: "center", gap: 6,
+          background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.25)",
+          borderRadius: 20, padding: "6px 16px", fontSize: 14, fontWeight: 800,
+          color: "#f59e0b", letterSpacing: "-0.3px", marginBottom: 12,
+        }}>
+          ⚡ +{verdictXP[verdict] || 20} XP earned
+        </div>
         {interviewer && (
           <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
             <span style={{ fontSize: 22 }}>{interviewer.avatar}</span>
@@ -247,8 +325,25 @@ export default function InterviewFeedbackScreen({
           background: "rgba(99,102,241,0.05)",
           border: "1px solid rgba(99,102,241,0.2)",
         }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "#818cf8", marginBottom: 8 }}>
-            What a strong answer looks like
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#818cf8" }}>
+              What a strong answer looks like
+            </div>
+            {phrasesSaved ? (
+              <span style={{ fontSize: 12, color: "#10b981", fontWeight: 700 }}>✓ Saved 2 phrases</span>
+            ) : (
+              <button
+                onClick={savePhrasesToLexicon}
+                disabled={phrasesSaving}
+                style={{
+                  background: "rgba(99,102,241,0.15)", border: "1px solid rgba(99,102,241,0.3)",
+                  borderRadius: 8, padding: "4px 12px", fontSize: 12, color: "#a5b4fc",
+                  cursor: "pointer", fontWeight: 600,
+                }}
+              >
+                {phrasesSaving ? "Saving..." : "Save key phrases to Lexicon"}
+              </button>
+            )}
           </div>
           <div style={{ fontSize: 14, color: "#94a3b8", lineHeight: 1.6, fontStyle: "italic" }}>
             "{sampleStrongAnswer}"

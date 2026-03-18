@@ -17,6 +17,7 @@ import InterviewSelfAssessScreen from "./components/InterviewSelfAssessScreen.js
 import StoryBankScreen from "./components/StoryBankScreen.jsx";
 import PushbackDrillScreen from "./components/PushbackDrillScreen.jsx";
 import QuickDrillScreen from "./components/QuickDrillScreen.jsx";
+import CustomQuestionsScreen from "./components/CustomQuestionsScreen.jsx";
 
 // ── Sign-In Screen ───────────────────────────────────────────────────────────
 
@@ -74,7 +75,7 @@ const NAV_TABS = [
   { id: "interviewHome", label: "Interview", icon: "🎯" },
 ];
 
-const SCREENS_WITH_NO_NAV = ["preBattle", "battle", "feedback", "lightning", "interview", "interviewFeedback", "interviewSelfAssess", "storyBank", "pushbackDrill", "quickDrill"];
+const SCREENS_WITH_NO_NAV = ["preBattle", "battle", "feedback", "lightning", "interview", "interviewFeedback", "interviewSelfAssess", "storyBank", "pushbackDrill", "quickDrill", "customQuestions"];
 
 function BottomNav({ currentScreen, setCurrentScreen }) {
   if (SCREENS_WITH_NO_NAV.includes(currentScreen)) return null;
@@ -119,6 +120,7 @@ export default function App() {
   const [interviewFeedback, setInterviewFeedback] = useState(null);
   const [interviewSelfScores, setInterviewSelfScores] = useState(null);
   const [storyBank, setStoryBank] = useState([]);
+  const [customQuestion, setCustomQuestion] = useState(null);
 
   // Auth state listener
   useEffect(() => {
@@ -208,6 +210,7 @@ export default function App() {
             user={user}
             setCurrentScreen={setCurrentScreen}
             setInterviewData={setInterviewData}
+            setCustomQuestion={setCustomQuestion}
           />
         );
       case "interview":
@@ -233,6 +236,7 @@ export default function App() {
               setInterviewSelfScores(selfScores);
               setCurrentScreen("interviewFeedback");
             }}
+            setCurrentScreen={setCurrentScreen}
           />
         );
       case "interviewFeedback":
@@ -264,6 +268,15 @@ export default function App() {
           <QuickDrillScreen
             user={user}
             setCurrentScreen={setCurrentScreen}
+          />
+        );
+      case "customQuestions":
+        return (
+          <CustomQuestionsScreen
+            user={user}
+            setCurrentScreen={setCurrentScreen}
+            setCustomQuestion={setCustomQuestion}
+            setInterviewData={setInterviewData}
           />
         );
       default:

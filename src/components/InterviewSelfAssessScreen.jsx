@@ -106,7 +106,7 @@ function StarRating({ value, onChange, color }) {
   );
 }
 
-export default function InterviewSelfAssessScreen({ onSubmit, dimensions: dimKeys }) {
+export default function InterviewSelfAssessScreen({ onSubmit, dimensions: dimKeys, setCurrentScreen }) {
   const [scores, setScores] = useState({
     productSense: 0,
     analytical: 0,
@@ -124,6 +124,11 @@ export default function InterviewSelfAssessScreen({ onSubmit, dimensions: dimKey
 
   return (
     <div style={styles.container}>
+      {setCurrentScreen && (
+        <button onClick={() => setCurrentScreen("home")} style={{ background: "none", border: "none", color: "#94a3b8", fontSize: 14, cursor: "pointer", padding: "8px 0", display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+          ← Back
+        </button>
+      )}
       <div style={styles.header}>
         <div style={styles.title}>How did that go?</div>
         <div style={styles.subtitle}>

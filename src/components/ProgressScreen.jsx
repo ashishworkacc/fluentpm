@@ -3,6 +3,134 @@ import { collection, query, orderBy, limit, getDocs } from "firebase/firestore";
 import { db } from "../lib/firebase.js";
 import { RANKS } from "../hooks/useProgress.js";
 
+// ── Debrief card helpers ──────────────────────────────────────────────────────
+
+function DebriefCard({ debrief, onView, isSelected }) {
+  const isInterview = debrief._type === "interview";
+  const badgeColor = isInterview ? "#8b5cf6" : "#6366f1";
+  const badgeBg = isInterview ? "rgba(139,92,246,0.15)" : "rgba(99,102,241,0.15)";
+  const badgeLabel = isInterview ? "Interview" : "Arena";
+
+  const scoreDisplay = isInterview
+    ? (debrief.verdict || "—")
+    : (debrief.aiScore != null ? `${debrief.aiScore}/10` : "—");
+
+  const tip = debrief.verdictReason || debrief.strongestMoment || debrief.coachTip || debrief.tip || "";
+  const truncatedTip = tip.length > 80 ? tip.slice(0, 80) + "…" : tip;
+
+  const dateStr = debrief.date || (debrief.savedAt ? new Date(debrief.savedAt).toISOString().slice(0, 10) : "");
+  const displayDate = dateStr ? new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "";
+
+  return (
+    <div style={{
+      background: "rgba(15,16,40,0.82)",
+      border: isSelected ? "1px solid rgba(99,102,241,0.5)" : "1px solid rgba(255,255,255,0.08)",
+      borderRadius: 16,
+      padding: "14px 16px",
+      marginBottom: 10,
+    }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 20, background: badgeBg, color: badgeColor }}>
+            {badgeLabel}
+          </span>
+          <span style={{ fontSize: 12, color: "#64748b" }}>{displayDate}</span>
+          {(debrief.opponentName || debrief.interviewerName) && (
+            <span style={{ fontSize: 12, color: "#64748b" }}>· {debrief.opponentName || debrief.interviewerName}</span>
+          )}
+        </div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: badgeColor }}>{scoreDisplay}</div>
+      </div>
+      {truncatedTip && (
+        <div style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.5, fontStyle: "italic", marginBottom: 8 }}>
+          "{truncatedTip}"
+        </div>
+      )}
+      <button
+        onClick={() => onView(debrief)}
+        style={{
+          background: "rgba(99,102,241,0.1)", border: "1px solid rgba(99,102,241,0.2)",
+          borderRadius: 8, padding: "5px 12px", fontSize: 12, color: "#a5b4fc",
+          cursor: "pointer", fontWeight: 600,
+        }}
+      >
+        {isSelected ? "Close" : "View Full Debrief →"}
+      </button>
+
+      {/* Inline expanded view */}
+      {isSelected && (
+        <div style={{ marginTop: 16, borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: 16 }}>
+          {isInterview ? (
+            <>
+              {debrief.verdictReason && (
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Verdict Reason</div>
+                  <div style={{ fontSize: 13, color: "#94a3b8", lineHeight: 1.6 }}>{debrief.verdictReason}</div>
+                </div>
+              )}
+              {debrief.strongestMoment && (
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#10b981", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Strongest Moment</div>
+                  <div style={{ fontSize: 13, color: "#94a3b8", lineHeight: 1.6 }}>{debrief.strongestMoment}</div>
+                </div>
+              )}
+              {debrief.rootCause && debrief.rootCause !== "none" && (
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#f59e0b", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Root Cause</div>
+                  <div style={{ fontSize: 13, color: "#94a3b8", lineHeight: 1.6 }}>{debrief.rootCauseExplanation || debrief.rootCause}</div>
+                </div>
+              )}
+              {debrief.sampleStrongAnswer && (
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#818cf8", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Sample Strong Answer</div>
+                  <div style={{ fontSize: 13, color: "#94a3b8", lineHeight: 1.6, fontStyle: "italic" }}>"{debrief.sampleStrongAnswer}"</div>
+                </div>
+              )}
+              {debrief.innerMonologue && debrief.innerMonologue.some(Boolean) && (
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Inner Monologue</div>
+                  {debrief.innerMonologue.filter(Boolean).slice(0, 2).map((t, i) => (
+                    <div key={i} style={{ fontSize: 12, color: "#64748b", lineHeight: 1.5, marginBottom: 4, fontStyle: "italic" }}>T{i+1}: "{t}"</div>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              {debrief.tip && (
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Coach's Call</div>
+                  <div style={{ fontSize: 13, color: "#94a3b8", lineHeight: 1.6 }}>{debrief.tip || debrief.coachTip}</div>
+                </div>
+              )}
+              {debrief.weakPhrases && debrief.weakPhrases.length > 0 && (
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#f43f5e", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Phrases to Retire</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {debrief.weakPhrases.map((p, i) => (
+                      <span key={i} style={{ fontSize: 12, color: "#f43f5e", textDecoration: "line-through", background: "rgba(244,63,94,0.06)", padding: "2px 8px", borderRadius: 6 }}>{p}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {debrief.powerPhrases && debrief.powerPhrases.length > 0 && (
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#06b6d4", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Power Phrases</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    {debrief.powerPhrases.map((p, i) => (
+                      <div key={i} style={{ fontSize: 12, color: "#a5f3fc", fontStyle: "italic" }}>"{p}"</div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function formatDate(dateStr) {
@@ -289,6 +417,8 @@ export default function ProgressScreen({ user, setCurrentScreen }) {
   const cached = readCache(user.uid);
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [savedDebriefs, setSavedDebriefs] = useState([]);
+  const [selectedDebrief, setSelectedDebrief] = useState(null);
 
   const profile = cached || {};
   const currentRank = profile.rank || "rookie";
@@ -304,6 +434,23 @@ export default function ProgressScreen({ user, setCurrentScreen }) {
         const snap = await getDocs(q);
         const data = snap.docs.map(d => d.data());
         setSessions(data);
+
+        // Also fetch interview sessions for saved debriefs
+        try {
+          const interviewRef = collection(db, "users", user.uid, "interviewSessions");
+          const iq = query(interviewRef, orderBy("savedAt", "desc"), limit(10));
+          const isnap = await getDocs(iq);
+          const interviewData = isnap.docs.map(d => ({ ...d.data(), _type: "interview" }));
+          const battleData = data.map(d => ({ ...d, _type: "battle" }));
+          // Merge and sort by timestamp
+          const merged = [...interviewData, ...battleData].sort((a, b) => {
+            const ta = a.timestamp || a.savedAt || "";
+            const tb = b.timestamp || b.savedAt || "";
+            return tb.localeCompare(ta);
+          }).slice(0, 20);
+          setSavedDebriefs(merged);
+        } catch {}
+
       } catch (err) {
         console.warn("Failed to fetch sessions:", err.message);
       } finally {
@@ -383,6 +530,21 @@ export default function ProgressScreen({ user, setCurrentScreen }) {
         sessions.map((session, i) => (
           <SessionCard key={i} session={session} />
         ))
+      )}
+
+      {/* Saved Debriefs */}
+      {savedDebriefs.length > 0 && (
+        <>
+          <div style={{ ...styles.sectionLabel, marginTop: 12 }}>Saved Debriefs</div>
+          {savedDebriefs.map((debrief, i) => (
+            <DebriefCard
+              key={i}
+              debrief={debrief}
+              isSelected={selectedDebrief === i}
+              onView={() => setSelectedDebrief(selectedDebrief === i ? null : i)}
+            />
+          ))}
+        </>
       )}
 
       <div style={{ height: 24 }} />

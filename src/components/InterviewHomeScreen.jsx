@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { INTERVIEWERS, INTERVIEW_TYPES } from "../data/interviewers.js";
 import { INTERVIEW_QUESTIONS } from "../data/interviewQuestions.js";
+import { filterUnseenQuestions } from "../lib/questionHistory.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -69,9 +70,16 @@ const DRILL_CARDS = [
     icon: "⚡",
     color: "#f59e0b",
   },
+  {
+    id: "customQuestions",
+    title: "My Question Bank",
+    desc: "Practice your own interview questions",
+    icon: "📝",
+    color: "#06b6d4",
+  },
 ];
 
-export default function InterviewHomeScreen({ user, setCurrentScreen, setInterviewData }) {
+export default function InterviewHomeScreen({ user, setCurrentScreen, setInterviewData, setCustomQuestion }) {
   const [selectedType, setSelectedType] = useState(null);
   const [selectedInterviewer, setSelectedInterviewer] = useState(null);
   const [selectedCompany, setSelectedCompany] = useState("All");
@@ -88,9 +96,9 @@ export default function InterviewHomeScreen({ user, setCurrentScreen, setIntervi
     }
     if (filtered.length === 0) filtered = questions;
 
-    const today = getTodayDateString();
-    const seed = seededRandom(`${today}-${selectedType}-${selectedInterviewer.id}-${selectedCompany}`);
-    const question = filtered[seed % filtered.length];
+    // Use filterUnseenQuestions to prioritise unseen questions
+    const prioritised = filterUnseenQuestions(user.uid, filtered);
+    const question = prioritised[0] || filtered[0];
 
     setInterviewData({
       interviewer: selectedInterviewer,
