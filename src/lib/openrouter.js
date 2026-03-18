@@ -418,6 +418,129 @@ Return ONLY the corrected transcript text. Nothing else. No explanation. No quot
   }
 }
 
+// ── PM Interview System Prompt ───────────────────────────────────────────────
+
+export function buildInterviewSystemPrompt(interviewer, question, questionType) {
+  const evalDimensions = {
+    product_design: "Product Sense (40%), Communication (30%), Execution Thinking (30%)",
+    metrics: "Analytical Thinking (50%), Communication (25%), Product Sense (25%)",
+    strategy: "Strategic Thinking (40%), Product Sense (30%), Communication (30%)",
+    behavioral: "Leadership (40%), Communication (35%), Self-Awareness (25%)",
+    estimation: "Analytical Thinking (60%), Communication (25%), Structured Thinking (15%)",
+    execution: "Execution (45%), Analytical (30%), Communication (25%)",
+  };
+
+  return `You are ${interviewer.name}, ${interviewer.role}.
+Your interview style: ${interviewer.style}
+Your catchphrase: "${interviewer.catchphrase}"
+
+You are conducting a real PM interview. The candidate is answering this question:
+"${question.text}"
+Question type: ${questionType}
+Evaluation dimensions: ${evalDimensions[questionType] || "Product Sense, Communication, Execution"}
+
+INTERVIEW CONDUCT RULES:
+- You are a real interviewer, not a coach. Stay in character throughout.
+- Ask ONE focused follow-up question per turn. Do not give multiple questions at once.
+- Probe on vague claims: "What specifically do you mean by that?"
+- Push for numbers: "Can you put a number on that?"
+- Challenge assumptions: "What if your assumption about the user is wrong?"
+- After EXACTLY 5 user turns, output the ###INTERVIEW_FEEDBACK### block.
+- Do NOT give hints. Do NOT soften the interview unrealistically.
+- A real PM interview is uncomfortable — replicate that.
+
+TURN STRUCTURE:
+- Turn 1: Your opener (already set to the question). Just be the interviewer.
+- Turn 2-4: Follow-up questions. Dig into what they said.
+- Turn 5: Final question, then the ###INTERVIEW_FEEDBACK### block immediately after your Turn 5 reply.
+
+${LANGUAGE_REGISTER_RULES}
+
+###INTERVIEW_FEEDBACK### FORMAT — output EXACTLY after Turn 5 reply:
+
+###INTERVIEW_FEEDBACK###
+PRODUCT_SENSE: [1-5]
+ANALYTICAL: [1-5]
+EXECUTION: [1-5]
+COMMUNICATION: [1-5]
+LEADERSHIP: [1-5]
+VERDICT: [Strong Hire | Hire | No Hire | Strong No Hire]
+VERDICT_REASON: [2-3 sentences explaining the verdict — be specific about what tipped it]
+STRONGEST_MOMENT: [quote or describe the single best thing the candidate said]
+LOST_INTERVIEWER_AT: [the specific moment or answer where you became less convinced — be honest]
+SAMPLE_STRONG_ANSWER: [How a top candidate would have answered the core question — 3-4 sentences]
+IMPROVE_1: [most important skill/area to develop — one sentence]
+IMPROVE_2: [second area — one sentence]
+IMPROVE_3: [third area — one sentence]
+###END_INTERVIEW###`;
+}
+
+// ── Interview Feedback Parser ────────────────────────────────────────────────
+
+export function parseInterviewFeedback(text) {
+  const block = text.split("###INTERVIEW_FEEDBACK###")[1]?.split("###END_INTERVIEW###")[0] || "";
+  const extract = (key) => {
+    const match = block.match(new RegExp(`${key}:\\s*(.+)`));
+    return match ? match[1].trim() : "";
+  };
+  const score = (key) => parseInt(extract(key), 10) || 0;
+  return {
+    productSense: score("PRODUCT_SENSE"),
+    analytical: score("ANALYTICAL"),
+    execution: score("EXECUTION"),
+    communication: score("COMMUNICATION"),
+    leadership: score("LEADERSHIP"),
+    verdict: extract("VERDICT"),
+    verdictReason: extract("VERDICT_REASON"),
+    strongestMoment: extract("STRONGEST_MOMENT"),
+    lostInterviewerAt: extract("LOST_INTERVIEWER_AT"),
+    sampleStrongAnswer: extract("SAMPLE_STRONG_ANSWER"),
+    improve1: extract("IMPROVE_1"),
+    improve2: extract("IMPROVE_2"),
+    improve3: extract("IMPROVE_3"),
+  };
+}
+
+// ── Interview API Call ───────────────────────────────────────────────────────
+
+export async function sendInterviewMessage(messages, interviewer, question, questionType) {
+  const systemPrompt = buildInterviewSystemPrompt(interviewer, question, questionType);
+
+  const response = await fetch(OPENROUTER_API_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${getApiKey()}`,
+      "HTTP-Referer": window.location.origin,
+      "X-Title": "FluentPM",
+    },
+    body: JSON.stringify({
+      model: MODEL,
+      messages: [
+        { role: "system", content: systemPrompt },
+        ...messages,
+      ],
+      temperature: 0.7,
+      max_tokens: 1400,
+    }),
+  });
+
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`OpenRouter error ${response.status}: ${err}`);
+  }
+
+  const data = await response.json();
+  const reply = data.choices?.[0]?.message?.content ?? "";
+
+  let interviewFeedback = null;
+  if (reply.includes("###INTERVIEW_FEEDBACK###")) {
+    interviewFeedback = parseInterviewFeedback(reply);
+  }
+
+  return { reply, interviewFeedback };
+}
+
 export async function scoreLightningRound(
   targetExpression,
   variantToUse,

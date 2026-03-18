@@ -7,6 +7,18 @@ import { cancelSpeech } from "../lib/speechSynthesis.js";
 
 const MAX_TURNS = 3;
 
+function cleanOpponentText(raw) {
+  if (!raw) return "";
+  return raw
+    .split("###FEEDBACK###")[0]   // strip feedback block
+    .replace(/\[.*?\]/g, "")       // remove [stage directions]
+    .replace(/\(.*?\)/g, "")       // remove (parenthetical notes)
+    .replace(/\*.*?\*/g, "")       // remove *action text*
+    .replace(/^(waiting for|system:|note:|instruction:).*/gim, "") // remove system leakage
+    .replace(/\n{3,}/g, "\n\n")    // collapse excessive newlines
+    .trim();
+}
+
 const glassCard = {
   background: "rgba(255,255,255,0.06)",
   border: "1px solid rgba(255,255,255,0.1)",
@@ -191,6 +203,7 @@ export default function BattleScreen({
   const messagesEndRef = useRef(null);
   const hasInitialised = useRef(false);
   const liveTranscriptRef = useRef(""); // tracks transcript in callbacks (avoids stale closure)
+  const pendingFeedbackRef = useRef(false);
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -235,7 +248,7 @@ export default function BattleScreen({
           systemHint,
           coachingProfile
         );
-        const cleanReply = reply.split("###FEEDBACK###")[0].trim();
+        const cleanReply = cleanOpponentText(reply);
         setMessages([{ role: "opponent", text: cleanReply }]);
         setCurrentSpeechText(cleanReply);
         setIsSpeakingFace(true);
@@ -400,7 +413,7 @@ export default function BattleScreen({
         coachingProfile
       );
 
-      const cleanReply = reply.split("###FEEDBACK###")[0].trim();
+      const cleanReply = cleanOpponentText(reply);
 
       if (cleanReply) {
         setMessages(prev => [...prev, { role: "opponent", text: cleanReply }]);
@@ -429,10 +442,12 @@ export default function BattleScreen({
         };
 
         setSessionData(sessionDataObj);
-
-        setTimeout(() => {
-          setCurrentScreen("feedback");
-        }, 1800);
+        pendingFeedbackRef.current = true;
+        // If not speaking (muted or no reply), navigate after short delay
+        if (!cleanReply || voiceMuted) {
+          setTimeout(() => setCurrentScreen("feedback"), 1500);
+        }
+        // Otherwise onSpeechEnd handler will navigate
       } else {
         setMicState("idle");
       }
@@ -471,7 +486,13 @@ export default function BattleScreen({
             opponent={opponent}
             isSpeaking={isSpeakingFace}
             text={currentSpeechText}
-            onSpeechEnd={() => setIsSpeakingFace(false)}
+            onSpeechEnd={() => {
+              setIsSpeakingFace(false);
+              if (pendingFeedbackRef.current) {
+                pendingFeedbackRef.current = false;
+                setTimeout(() => setCurrentScreen("feedback"), 800);
+              }
+            }}
             muted={voiceMuted}
           />
           <div style={{ display: "flex", flexDirection: "column", gap: 4, marginLeft: 12 }}>

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { speakOpponentLine, cancelSpeech } from "../lib/speechSynthesis.js";
+import { speakOpponentLine, cancelSpeech, VOICE_PROFILES } from "../lib/speechSynthesis.js";
 
 // ── Per-opponent visual definitions ──────────────────────────────────────────
 
@@ -231,8 +231,19 @@ export default function TalkingFace({ opponentId, opponent, isSpeaking, text, on
   const mouthTimerRef = useRef(null);
   const blinkTimerRef = useRef(null);
   const isSpeakingRef = useRef(false);
+  const timersRef = useRef([]); // timing-based mouth animation timers
+  const closeTimerRef = useRef(null); // onboundary close timer
 
-  const config = FACE_CONFIGS[opponentId] || FACE_CONFIGS.priya_sharma;
+  // Map interviewer IDs to existing face configs
+  const FACE_ID_MAP = {
+    alex_park: "rahul_nair",
+    maya_rodriguez: "sarah_chen",
+    vikram_singh: "amit_bose",
+    emma_walsh: "leela_krishnan",
+    david_chen: "james_morton",
+  };
+  const resolvedId = FACE_ID_MAP[opponentId] || opponentId;
+  const config = FACE_CONFIGS[resolvedId] || FACE_CONFIGS.priya_sharma;
   const { skinColor, noseShadow, irisColor } = config;
 
   // ── Blinking ────────────────────────────────────────────────────────────────
@@ -251,6 +262,14 @@ export default function TalkingFace({ opponentId, opponent, isSpeaking, text, on
     return () => clearTimeout(blinkTimerRef.current);
   }, []);
 
+  // ── Helper: clear all timing-based animation timers ─────────────────────────
+  function clearAllTimers() {
+    timersRef.current.forEach(clearTimeout);
+    timersRef.current = [];
+    clearTimeout(closeTimerRef.current);
+    clearTimeout(mouthTimerRef.current);
+  }
+
   // ── Speech synthesis ────────────────────────────────────────────────────────
   useEffect(() => {
     if (isSpeaking && text) {
@@ -258,55 +277,60 @@ export default function TalkingFace({ opponentId, opponent, isSpeaking, text, on
 
       // Stop any previous speech
       if (speechRef.current) {
-        // Don't call stop — it would fire onEnd and mess state
         cancelSpeech();
       }
+      clearAllTimers();
+
+      // Schedule timing-based mouth animation — works for both muted and unmuted
+      const words = text.split(/\s+/).filter(Boolean);
+      const rate = VOICE_PROFILES[opponentId]?.rate || 1.0;
+      let elapsed = 0;
+      words.forEach((word) => {
+        const wordDuration = Math.max(180, (word.length * 60 + 100) / rate);
+        const openAt = elapsed;
+        const closeAt = elapsed + Math.min(wordDuration * 0.65, 280);
+        timersRef.current.push(
+          setTimeout(() => setMouthOpenAmount(0.6 + Math.random() * 0.4), openAt)
+        );
+        timersRef.current.push(
+          setTimeout(() => setMouthOpenAmount(0), closeAt)
+        );
+        elapsed += wordDuration;
+      });
 
       if (muted) {
-        // Animate mouth without audio — simulate word timing
-        let wordIdx = 0;
-        const words = text.split(/\s+/);
-        const avgWordMs = 300;
-
-        function animateNextWord() {
-          if (!isSpeakingRef.current || wordIdx >= words.length) {
-            setMouthOpenAmount(0);
-            onSpeechEnd?.();
-            return;
-          }
-          setMouthOpenAmount(0.8 + Math.random() * 0.2);
-          clearTimeout(mouthTimerRef.current);
-          mouthTimerRef.current = setTimeout(() => {
-            setMouthOpenAmount(0);
-            wordIdx++;
-            const nextDelay = avgWordMs * (0.8 + Math.random() * 0.4);
-            mouthTimerRef.current = setTimeout(animateNextWord, nextDelay * 0.3);
-          }, avgWordMs * 0.6);
-        }
-
-        animateNextWord();
+        // No audio — fire onSpeechEnd after estimated duration
+        timersRef.current.push(
+          setTimeout(() => {
+            if (isSpeakingRef.current) {
+              clearAllTimers();
+              setMouthOpenAmount(0);
+              isSpeakingRef.current = false;
+              onSpeechEnd?.();
+            }
+          }, elapsed + 200)
+        );
         speechRef.current = {
           stop: () => {
             isSpeakingRef.current = false;
-            clearTimeout(mouthTimerRef.current);
+            clearAllTimers();
             setMouthOpenAmount(0);
           }
         };
       } else {
-        // Real speech synthesis
+        // Real speech synthesis — timing already drives animation; onboundary enhances
         speechRef.current = speakOpponentLine(
           text,
           opponentId,
           ({ word }) => {
-            // Word boundary — open mouth
-            setMouthOpenAmount(0.7 + Math.random() * 0.3);
-            clearTimeout(mouthTimerRef.current);
-            mouthTimerRef.current = setTimeout(() => {
-              setMouthOpenAmount(0);
-            }, 180);
+            // Reinforce — mouth already animating from timing, this enhances sync
+            setMouthOpenAmount(0.8 + Math.random() * 0.2);
+            clearTimeout(closeTimerRef.current);
+            closeTimerRef.current = setTimeout(() => setMouthOpenAmount(0), 160);
           },
           () => {
             // Speech ended
+            clearAllTimers();
             setMouthOpenAmount(0);
             isSpeakingRef.current = false;
             onSpeechEnd?.();
@@ -316,7 +340,7 @@ export default function TalkingFace({ opponentId, opponent, isSpeaking, text, on
     } else if (!isSpeaking) {
       // isSpeaking turned false — cancel
       isSpeakingRef.current = false;
-      clearTimeout(mouthTimerRef.current);
+      clearAllTimers();
       setMouthOpenAmount(0);
       if (speechRef.current) {
         cancelSpeech();
@@ -325,7 +349,7 @@ export default function TalkingFace({ opponentId, opponent, isSpeaking, text, on
     }
 
     return () => {
-      clearTimeout(mouthTimerRef.current);
+      clearAllTimers();
     };
   }, [isSpeaking, text, opponentId, muted]);
 
@@ -335,6 +359,9 @@ export default function TalkingFace({ opponentId, opponent, isSpeaking, text, on
       isSpeakingRef.current = false;
       clearTimeout(mouthTimerRef.current);
       clearTimeout(blinkTimerRef.current);
+      clearTimeout(closeTimerRef.current);
+      timersRef.current.forEach(clearTimeout);
+      timersRef.current = [];
       cancelSpeech();
     };
   }, []);
@@ -343,7 +370,7 @@ export default function TalkingFace({ opponentId, opponent, isSpeaking, text, on
   const mouthOpenY = mouthOpenAmount * 8; // 0–8
   const mouthOpen = mouthOpenAmount > 0.15;
   const eyelidRy = blinkScale * 7; // 0–7 (0 = open, 7 = closed)
-  const isWarm = opponentId === "leela_krishnan";
+  const isWarm = resolvedId === "leela_krishnan";
   const mouthPath = getMouthPath(mouthOpenAmount, isWarm);
 
   // Glow ring when speaking

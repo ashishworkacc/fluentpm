@@ -1,11 +1,17 @@
 // Opponent voice profiles — each character gets a distinct voice
-const VOICE_PROFILES = {
+export const VOICE_PROFILES = {
   priya_sharma:   { pitch: 1.05, rate: 0.92, name: "priya"  }, // authoritative, measured
   rahul_nair:     { pitch: 0.95, rate: 0.9,  name: "rahul"  }, // deep, precise
   sarah_chen:     { pitch: 1.08, rate: 1.0,  name: "sarah"  }, // crisp, direct
   amit_bose:      { pitch: 0.92, rate: 0.88, name: "amit"   }, // deliberate, careful
   leela_krishnan: { pitch: 1.02, rate: 0.88, name: "leela"  }, // warm, measured
   james_morton:   { pitch: 0.88, rate: 0.95, name: "james"  }, // commanding, steady
+  // PM Interviewers — mapped to closest existing voice profiles
+  alex_park:      { pitch: 0.95, rate: 0.92, name: "rahul"  }, // maps to rahul_nair face
+  maya_rodriguez: { pitch: 1.05, rate: 1.0,  name: "sarah"  }, // maps to sarah_chen face
+  vikram_singh:   { pitch: 0.9,  rate: 0.95, name: "amit"   }, // maps to amit_bose face
+  emma_walsh:     { pitch: 1.08, rate: 1.02, name: "leela"  }, // maps to leela_krishnan face
+  david_chen:     { pitch: 0.88, rate: 0.9,  name: "james"  }, // maps to james_morton face
 };
 
 let voices = [];

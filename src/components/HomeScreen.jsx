@@ -411,6 +411,27 @@ export default function HomeScreen({ user, setCurrentScreen, setPreBattleData, s
         </div>
       )}
 
+      {/* Interview Prep Card */}
+      <div
+        style={{
+          ...glassCard,
+          padding: "16px 20px",
+          cursor: "pointer",
+          borderColor: "rgba(6,182,212,0.3)",
+          marginBottom: 16,
+        }}
+        onClick={() => setCurrentScreen("interviewHome")}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <span style={{ fontSize: 28 }}>🎯</span>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "#f1f5f9" }}>PM Interview Prep</div>
+            <div style={{ fontSize: 13, color: "#64748b" }}>Get a hire / no-hire verdict from real interviewers</div>
+          </div>
+          <span style={{ marginLeft: "auto", color: "#06b6d4", fontSize: 18 }}>→</span>
+        </div>
+      </div>
+
       {/* Daily Challenge */}
       {todayDone ? (
         <DailyChallengeDoneCard onRematch={handleEnterArena} />

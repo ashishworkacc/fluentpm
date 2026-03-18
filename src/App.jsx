@@ -10,6 +10,9 @@ import ProgressScreen from "./components/ProgressScreen.jsx";
 import LexiconScreen from "./components/LexiconScreen.jsx";
 import LightningRoundScreen from "./components/LightningRoundScreen.jsx";
 import PhrasesScreen from "./components/PhrasesScreen.jsx";
+import InterviewHomeScreen from "./components/InterviewHomeScreen.jsx";
+import InterviewScreen from "./components/InterviewScreen.jsx";
+import InterviewFeedbackScreen from "./components/InterviewFeedbackScreen.jsx";
 
 // ── Sign-In Screen ───────────────────────────────────────────────────────────
 
@@ -60,13 +63,14 @@ function LoadingScreen() {
 // ── Bottom Nav ───────────────────────────────────────────────────────────────
 
 const NAV_TABS = [
-  { id: "home",     label: "Practice" },
-  { id: "lexicon",  label: "Lexicon"  },
-  { id: "progress", label: "Progress" },
-  { id: "phrases",  label: "Phrases"  },
+  { id: "home",          label: "Practice"  },
+  { id: "lexicon",       label: "Lexicon"   },
+  { id: "progress",      label: "Progress"  },
+  { id: "phrases",       label: "Phrases"   },
+  { id: "interviewHome", label: "Interview", icon: "🎯" },
 ];
 
-const SCREENS_WITH_NO_NAV = ["preBattle", "battle", "feedback", "lightning"];
+const SCREENS_WITH_NO_NAV = ["preBattle", "battle", "feedback", "lightning", "interview", "interviewFeedback"];
 
 function BottomNav({ currentScreen, setCurrentScreen }) {
   if (SCREENS_WITH_NO_NAV.includes(currentScreen)) return null;
@@ -107,6 +111,8 @@ export default function App() {
   const [battleData, setBattleData] = useState(null);
   const [sessionData, setSessionData] = useState(null);
   const [coachingProfile, setCoachingProfile] = useState(null);
+  const [interviewData, setInterviewData] = useState(null);
+  const [interviewFeedback, setInterviewFeedback] = useState(null);
 
   // Auth state listener
   useEffect(() => {
@@ -190,6 +196,32 @@ export default function App() {
         return <PhrasesScreen setCurrentScreen={setCurrentScreen} />;
       case "lightning":
         return <LightningRoundScreen user={user} setCurrentScreen={setCurrentScreen} />;
+      case "interviewHome":
+        return (
+          <InterviewHomeScreen
+            user={user}
+            setCurrentScreen={setCurrentScreen}
+            setInterviewData={setInterviewData}
+          />
+        );
+      case "interview":
+        return (
+          <InterviewScreen
+            user={user}
+            interviewData={interviewData}
+            setCurrentScreen={setCurrentScreen}
+            setInterviewFeedback={setInterviewFeedback}
+          />
+        );
+      case "interviewFeedback":
+        return (
+          <InterviewFeedbackScreen
+            user={user}
+            interviewData={interviewData}
+            interviewFeedback={interviewFeedback}
+            setCurrentScreen={setCurrentScreen}
+          />
+        );
       default:
         return (
           <HomeScreen
