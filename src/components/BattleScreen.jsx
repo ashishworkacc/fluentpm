@@ -96,6 +96,7 @@ export default function BattleScreen({
   opponent,
   scenario,
   outline,
+  coachingProfile,
   setCurrentScreen,
   setSessionData,
 }) {
@@ -160,7 +161,8 @@ export default function BattleScreen({
           [],
           opponent,
           scenario,
-          systemHint
+          systemHint,
+          coachingProfile
         );
         const cleanReply = reply.split("###FEEDBACK###")[0].trim();
         setMessages([{ role: "opponent", text: cleanReply }]);
@@ -293,7 +295,8 @@ export default function BattleScreen({
           frameworkInstruction: scenario.suggestedFramework
             ? `Suggested framework: ${scenario.suggestedFramework}`
             : "",
-        }
+        },
+        coachingProfile
       );
 
       const cleanReply = reply.split("###FEEDBACK###")[0].trim();

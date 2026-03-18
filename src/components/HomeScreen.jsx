@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, collection, getDocs, query, where, updateDoc } from "firebase/firestore";
 import { db } from "../lib/firebase.js";
 import { OPPONENTS } from "../data/opponents.js";
 import { SCENARIOS } from "../data/scenarios.js";
-import { useProgress, getRankFromXP } from "../hooks/useProgress.js";
+import { useProgress, getRankFromXP, checkDecay } from "../hooks/useProgress.js";
+import { getCoachingProfile } from "../lib/coachingProfile.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -230,13 +231,15 @@ function DailyChallengeCard({ opponent, scenario, onEnterArena }) {
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-export default function HomeScreen({ user, setCurrentScreen, setPreBattleData }) {
+export default function HomeScreen({ user, setCurrentScreen, setPreBattleData, setCoachingProfile }) {
   const today = getTodayDateString();
 
   // ── Step 1: load from localStorage instantly (sync, zero wait) ────────────
   const cached = readCache(user.uid);
   const [profile, setProfile] = useState(cached || DEFAULT_PROFILE);
   const [todayDone, setTodayDone] = useState(cached?.lastPlayedDate === today);
+  const [expressionsDueCount, setExpressionsDueCount] = useState(0);
+  const [decayApplied, setDecayApplied] = useState(false);
 
   const { opponent: dailyOpponent, scenario: dailyScenario } = getDailyChallenge();
 
@@ -246,15 +249,57 @@ export default function HomeScreen({ user, setCurrentScreen, setPreBattleData })
       try {
         const ref = doc(db, "users", user.uid, "profile", "main");
         const snap = await getDoc(ref);
+        let profileData;
+
         if (snap.exists()) {
-          const data = snap.data();
-          setProfile(data);
-          setTodayDone(data.lastPlayedDate === today);
-          writeCache(user.uid, data);        // keep cache fresh
+          profileData = snap.data();
+          setProfile(profileData);
+          setTodayDone(profileData.lastPlayedDate === today);
+          writeCache(user.uid, profileData);        // keep cache fresh
         } else {
           await setDoc(ref, DEFAULT_PROFILE);
           writeCache(user.uid, DEFAULT_PROFILE);
+          profileData = DEFAULT_PROFILE;
         }
+
+        // Decay check — run after profile loads
+        if (profileData) {
+          const decayResult = checkDecay(profileData.lastPlayedDate, profileData.rank || "rookie", profileData.xp || 0);
+          if (decayResult.shouldDecay && !decayApplied) {
+            setDecayApplied(true);
+            const updatedProfile = {
+              ...profileData,
+              xp: decayResult.newXP,
+              rank: decayResult.newRank,
+            };
+            await updateDoc(ref, { xp: decayResult.newXP, rank: decayResult.newRank });
+            setProfile(updatedProfile);
+            writeCache(user.uid, updatedProfile);
+          }
+        }
+
+        // Fetch coaching profile in background
+        getCoachingProfile(user.uid).then(cp => {
+          if (cp && setCoachingProfile) setCoachingProfile(cp);
+        }).catch(() => {});
+
+        // Count due expressions (status != mastered and lastUsedDate null or >3d)
+        try {
+          const lexRef = collection(db, "users", user.uid, "lexicon");
+          const lexSnap = await getDocs(lexRef);
+          const now = new Date();
+          let dueCount = 0;
+          lexSnap.docs.forEach(d => {
+            const data = d.data();
+            if (data.status === "mastered") return;
+            if (!data.lastUsedDate) { dueCount++; return; }
+            const last = new Date(data.lastUsedDate);
+            const diffDays = (now - last) / (1000 * 60 * 60 * 24);
+            if (diffDays > 3) dueCount++;
+          });
+          setExpressionsDueCount(dueCount);
+        } catch {}
+
       } catch (err) {
         // Network issue — cached data already shown, silently ignore
         console.warn("Firestore sync failed, using cached profile:", err.message);
@@ -324,6 +369,46 @@ export default function HomeScreen({ user, setCurrentScreen, setPreBattleData })
           daysSince={daysSince}
           penalty={progress.rankDef.decayPenalty}
         />
+      )}
+
+      {/* Expressions Due Card */}
+      {expressionsDueCount > 0 && (
+        <div style={{
+          ...glassCard,
+          padding: "16px 18px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: 16,
+          border: "1px solid rgba(6,182,212,0.2)",
+          background: "rgba(6,182,212,0.05)",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <span style={{ fontSize: 20 }}>📚</span>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "#f1f5f9" }}>
+                {expressionsDueCount} expression{expressionsDueCount !== 1 ? "s" : ""} due for practice
+              </div>
+              <div style={{ fontSize: 12, color: "#64748b" }}>Keep your vocabulary sharp</div>
+            </div>
+          </div>
+          <button
+            onClick={() => setCurrentScreen("lightning")}
+            style={{
+              padding: "8px 14px",
+              background: "rgba(6,182,212,0.12)",
+              border: "1px solid rgba(6,182,212,0.25)",
+              borderRadius: 20,
+              color: "#06b6d4",
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+            }}
+          >
+            Practice Now →
+          </button>
+        </div>
       )}
 
       {/* Daily Challenge */}

@@ -6,44 +6,10 @@ import HomeScreen from "./components/HomeScreen.jsx";
 import PreBattleScreen from "./components/PreBattleScreen.jsx";
 import BattleScreen from "./components/BattleScreen.jsx";
 import FeedbackScreen from "./components/FeedbackScreen.jsx";
-
-// ── Placeholder screens ──────────────────────────────────────────────────────
-
-function LexiconScreen({ setCurrentScreen }) {
-  return (
-    <div style={styles.placeholderContainer}>
-      <h2 style={styles.placeholderTitle}>Lexicon</h2>
-      <p style={styles.placeholderText}>Coming in Week 2.</p>
-    </div>
-  );
-}
-
-function ProgressScreen({ setCurrentScreen }) {
-  return (
-    <div style={styles.placeholderContainer}>
-      <h2 style={styles.placeholderTitle}>Progress</h2>
-      <p style={styles.placeholderText}>Coming in Week 2.</p>
-    </div>
-  );
-}
-
-function PhrasesScreen({ setCurrentScreen }) {
-  return (
-    <div style={styles.placeholderContainer}>
-      <h2 style={styles.placeholderTitle}>Phrases</h2>
-      <p style={styles.placeholderText}>Coming in Week 2.</p>
-    </div>
-  );
-}
-
-function LightningScreen({ setCurrentScreen }) {
-  return (
-    <div style={styles.placeholderContainer}>
-      <h2 style={styles.placeholderTitle}>Lightning Round</h2>
-      <p style={styles.placeholderText}>Coming in Week 2.</p>
-    </div>
-  );
-}
+import ProgressScreen from "./components/ProgressScreen.jsx";
+import LexiconScreen from "./components/LexiconScreen.jsx";
+import LightningRoundScreen from "./components/LightningRoundScreen.jsx";
+import PhrasesScreen from "./components/PhrasesScreen.jsx";
 
 // ── Sign-In Screen ───────────────────────────────────────────────────────────
 
@@ -140,6 +106,7 @@ export default function App() {
   const [preBattleData, setPreBattleData] = useState(null);
   const [battleData, setBattleData] = useState(null);
   const [sessionData, setSessionData] = useState(null);
+  const [coachingProfile, setCoachingProfile] = useState(null);
 
   // Auth state listener
   useEffect(() => {
@@ -181,6 +148,7 @@ export default function App() {
             user={user}
             setCurrentScreen={setCurrentScreen}
             setPreBattleData={setPreBattleData}
+            setCoachingProfile={setCoachingProfile}
           />
         );
       case "preBattle":
@@ -200,6 +168,7 @@ export default function App() {
             opponent={battleData?.opponent || preBattleData?.opponent}
             scenario={battleData?.scenario || preBattleData?.scenario}
             outline={battleData?.outline || ""}
+            coachingProfile={coachingProfile}
             setCurrentScreen={setCurrentScreen}
             setSessionData={setSessionData}
           />
@@ -214,19 +183,20 @@ export default function App() {
           />
         );
       case "lexicon":
-        return <LexiconScreen setCurrentScreen={setCurrentScreen} />;
+        return <LexiconScreen user={user} setCurrentScreen={setCurrentScreen} />;
       case "progress":
-        return <ProgressScreen setCurrentScreen={setCurrentScreen} />;
+        return <ProgressScreen user={user} setCurrentScreen={setCurrentScreen} />;
       case "phrases":
         return <PhrasesScreen setCurrentScreen={setCurrentScreen} />;
       case "lightning":
-        return <LightningScreen setCurrentScreen={setCurrentScreen} />;
+        return <LightningRoundScreen user={user} setCurrentScreen={setCurrentScreen} />;
       default:
         return (
           <HomeScreen
             user={user}
             setCurrentScreen={setCurrentScreen}
             setPreBattleData={setPreBattleData}
+            setCoachingProfile={setCoachingProfile}
           />
         );
     }
@@ -459,20 +429,5 @@ const styles = {
     fontSize: 15,
     color: "#64748b",
     fontWeight: 500,
-  },
-  // Placeholder screens
-  placeholderContainer: {
-    padding: "60px 32px",
-    textAlign: "center",
-  },
-  placeholderTitle: {
-    fontSize: 26,
-    fontWeight: 700,
-    marginBottom: 12,
-    color: "#f1f5f9",
-  },
-  placeholderText: {
-    fontSize: 15,
-    color: "#64748b",
   },
 };

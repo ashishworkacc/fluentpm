@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from "react";
 import { doc, addDoc, collection, updateDoc, getDoc, setDoc, increment } from "firebase/firestore";
 import { db } from "../lib/firebase.js";
 import { getRankFromXP } from "../hooks/useProgress.js";
+import { buildAndSaveCoachingProfile } from "../lib/coachingProfile.js";
+import { analyseTranscript } from "../hooks/useRealTimeAnalysis.js";
 
 // Keep localStorage cache in sync so HomeScreen loads instantly next time
 function updateProfileCache(uid, updates) {
@@ -28,12 +30,20 @@ function getScoreColor(score) {
 
 function getConfidenceGapInterpretation(selfRating, aiScore) {
   if (!selfRating) return null;
-  const gap = selfRating - aiScore / 2;
-  if (gap > 2) return "You felt more confident than the AI scored. Trust your instincts — but review the tips.";
-  if (gap < -2) return "The AI saw strengths you didn't. You may be underselling yourself.";
-  if (Math.abs(gap) <= 1) return "Your self-perception aligns well with your actual performance.";
-  if (gap > 0) return "Slightly more confident than the score — a healthy mindset.";
-  return "A small gap. Keep pushing your standards.";
+  // aiScore is 1-10, selfRating is 1-5
+  if (aiScore >= 8 && selfRating <= 3) {
+    return "You're being too hard on yourself. That was objectively strong.";
+  }
+  if (aiScore <= 6 && selfRating >= 4) {
+    return "You felt good, but the phrases were still basic. Let's look at what to change.";
+  }
+  if (aiScore <= 5 && selfRating <= 2) {
+    return "Tough one. Every expert started here. Keep going.";
+  }
+  if (aiScore >= 8 && selfRating >= 4) {
+    return "Strong all round. Next session will be harder.";
+  }
+  return "Your self-read is calibrated — trust that instinct.";
 }
 
 function getTodayDateString() {
@@ -87,25 +97,31 @@ function ScoreHero({ score, xp, structureScore }) {
 
 function StarRating({ value, onChange }) {
   return (
-    <div style={{ display: "flex", gap: 6 }}>
-      {[1, 2, 3, 4, 5].map(star => (
-        <button
-          key={star}
-          onClick={() => onChange(star)}
-          style={{
-            background: "none",
-            border: "none",
-            fontSize: 34,
-            cursor: "pointer",
-            color: star <= value ? "#f59e0b" : "rgba(255,255,255,0.1)",
-            padding: "2px 3px",
-            transition: "color 0.1s",
-            lineHeight: 1,
-          }}
-        >
-          ★
-        </button>
-      ))}
+    <div>
+      <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 10, fontWeight: 600 }}>
+        Rate your confidence
+      </div>
+      <div style={{ display: "flex", gap: 6 }}>
+        {[1, 2, 3, 4, 5].map(star => (
+          <button
+            key={star}
+            onClick={() => onChange(star)}
+            style={{
+              background: "none",
+              border: "none",
+              fontSize: 32,
+              cursor: "pointer",
+              color: star <= value ? "#f59e0b" : "rgba(255,255,255,0.12)",
+              padding: "2px 4px",
+              transition: "color 0.1s, transform 0.1s",
+              lineHeight: 1,
+              transform: star <= value ? "scale(1.1)" : "scale(1)",
+            }}
+          >
+            ★
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -155,9 +171,24 @@ export default function FeedbackScreen({ user, sessionData, opponent, setCurrent
 
     async function saveSession() {
       try {
+        // Compute cleanSpeechPct from fillerCounts if available
+        let cleanSpeechPct = sd.cleanSpeechPct;
+        if (!cleanSpeechPct && sd.transcript) {
+          const analysis = analyseTranscript(sd.transcript);
+          cleanSpeechPct = analysis.cleanSpeechPct;
+        }
+
         await addDoc(collection(db, "users", user.uid, "sessions"), {
           ...sd,
+          cleanSpeechPct,
+          aiScore: sd.score, // store as aiScore for coachingProfile queries
+          coachTip: sd.tip,   // store as coachTip for coachingProfile queries
           savedAt: new Date().toISOString(),
+        });
+
+        // Build coaching profile in background — non-blocking
+        buildAndSaveCoachingProfile(user.uid).catch(err => {
+          console.warn("Coaching profile build failed:", err.message);
         });
 
         const profileRef = doc(db, "users", user.uid, "profile", "main");
@@ -220,6 +251,14 @@ export default function FeedbackScreen({ user, sessionData, opponent, setCurrent
         .sort(([, a], [, b]) => b - a)
         .slice(0, 5)
     : [];
+
+  // Compute clean speech % from transcript if not pre-computed
+  let cleanSpeechPct = sd.cleanSpeechPct;
+  if (!cleanSpeechPct && sd.transcript) {
+    const analysis = analyseTranscript(sd.transcript);
+    cleanSpeechPct = analysis.cleanSpeechPct;
+  }
+  const cleanSpeechColor = cleanSpeechPct > 80 ? "#10b981" : cleanSpeechPct > 60 ? "#f59e0b" : "#f43f5e";
 
   return (
     <div style={styles.container}>
@@ -288,10 +327,24 @@ export default function FeedbackScreen({ user, sessionData, opponent, setCurrent
           </SectionCard>
         )}
 
-        {/* Filler Breakdown */}
+        {/* Filler Breakdown + Clean Speech */}
         {fillerEntries.length > 0 && (
           <SectionCard accentColor="#f43f5e">
-            <SectionLabel color="#f43f5e">FILLER WORDS</SectionLabel>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <SectionLabel color="#f43f5e">FILLER WORDS</SectionLabel>
+              {cleanSpeechPct !== undefined && (
+                <div style={{
+                  fontSize: 13,
+                  fontWeight: 800,
+                  color: cleanSpeechColor,
+                  background: `${cleanSpeechColor}18`,
+                  padding: "3px 10px",
+                  borderRadius: 20,
+                }}>
+                  {cleanSpeechPct}% clean
+                </div>
+              )}
+            </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {fillerEntries.map(([word, count]) => (
                 <div key={word} style={styles.fillerItem}>

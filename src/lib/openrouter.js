@@ -11,7 +11,7 @@ function getApiKey() {
 // ── System Prompt Builder ──────────────────────────────────────────────────
 
 export function buildBattleSystemPrompt(opponent, profile, scenario, options = {}) {
-  const { targetInstruction = "", frameworkInstruction = "", midCoachInstruction = "" } = options;
+  const { targetInstruction = "", frameworkInstruction = "", midCoachInstruction = "", coachingProfile = null } = options;
 
   const aggressionMap = {
     low: "You are firm but approachable. You push back gently and give the user space to think.",
@@ -31,7 +31,14 @@ Your communication style: ${aggressionStyle}
 SCENARIO CONTEXT:
 The user is a Product Manager being challenged with: "${scenario.text}"
 Situation type: ${scenario.situationType}
-
+${coachingProfile ? `
+USER COACHING PROFILE:
+- Top weak phrases: ${coachingProfile.topWeakPhrases?.join(", ") || "none yet"}
+- Lowest scoring situation: ${coachingProfile.lowestSituationType || "n/a"} (avg ${coachingProfile.lowestSituationAvg || "n/a"})
+- Recent scores: ${coachingProfile.recentScores?.join(", ") || "first session"}
+- Structure weakness: ${coachingProfile.structureAvg ? (coachingProfile.structureAvg < 6 ? "needs work" : "solid") : "n/a"}
+- Last session tip: ${coachingProfile.lastSession?.tip || "none"}
+` : ""}
 YOUR ROLE IN THIS CONVERSATION:
 - You are playing the opponent in a realistic workplace simulation.
 - You started the conversation with the scenario line above.
@@ -187,8 +194,8 @@ export function parseFeedbackBlock(text) {
 
 // ── Battle API Call ──────────────────────────────────────────────────────────
 
-export async function sendBattleMessage(messages, opponent, profile, scenario, options = {}) {
-  const systemPrompt = buildBattleSystemPrompt(opponent, profile, scenario, options);
+export async function sendBattleMessage(messages, opponent, profile, scenario, options = {}, coachingProfile = null) {
+  const systemPrompt = buildBattleSystemPrompt(opponent, profile, scenario, { ...options, coachingProfile });
 
   const response = await fetch(OPENROUTER_API_URL, {
     method: "POST",
