@@ -14,12 +14,12 @@ function getScoreLabel(score) {
 function getScoreColor(score) {
   if (score >= 8) return "#10b981";
   if (score >= 5) return "#f59e0b";
-  return "#ef4444";
+  return "#f43f5e";
 }
 
 function getConfidenceGapInterpretation(selfRating, aiScore) {
   if (!selfRating) return null;
-  const gap = selfRating - aiScore / 2; // selfRating is 1-5, aiScore 4-10 → normalise
+  const gap = selfRating - aiScore / 2;
   if (gap > 2) return "You felt more confident than the AI scored. Trust your instincts — but review the tips.";
   if (gap < -2) return "The AI saw strengths you didn't. You may be underselling yourself.";
   if (Math.abs(gap) <= 1) return "Your self-perception aligns well with your actual performance.";
@@ -31,30 +31,69 @@ function getTodayDateString() {
   return new Date().toISOString().slice(0, 10);
 }
 
+// ── Glass card base ──────────────────────────────────────────────────────────
+
+const glassCard = {
+  background: "rgba(255,255,255,0.06)",
+  backdropFilter: "blur(24px)",
+  WebkitBackdropFilter: "blur(24px)",
+  border: "1px solid rgba(255,255,255,0.1)",
+  borderRadius: 18,
+};
+
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function ScoreHero({ score }) {
+function ScoreHero({ score, xp, structureScore }) {
   const color = getScoreColor(score);
   const label = getScoreLabel(score);
   return (
-    <div style={{ ...styles.scoreHero, borderColor: color }}>
-      <div style={{ ...styles.scoreNumber, color }}>{score}</div>
-      <div style={{ ...styles.scoreLabel, color }}>{label}</div>
-      <div style={styles.scoreSubtitle}>out of 10</div>
+    <div style={{ textAlign: "center", padding: "32px 20px 24px", animation: "slideUp 0.3s ease" }}>
+      <div style={{ fontSize: 96, fontWeight: 900, color, lineHeight: 1, letterSpacing: "-4px", marginBottom: 4 }}>
+        {score}
+      </div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, marginBottom: 16 }}>
+        <div style={{ fontSize: 24, fontWeight: 800, color, letterSpacing: "-0.5px" }}>{label}</div>
+        {structureScore !== undefined && (
+          <div style={{ fontSize: 16, color: "#94a3b8", fontWeight: 500 }}>
+            — Structure <span style={{ color: structureScore >= 4 ? "#10b981" : structureScore >= 3 ? "#f59e0b" : "#f43f5e", fontWeight: 700 }}>{structureScore}/5</span>
+          </div>
+        )}
+      </div>
+      <div style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        background: "rgba(245,158,11,0.12)",
+        border: "1px solid rgba(245,158,11,0.25)",
+        borderRadius: 20,
+        padding: "6px 16px",
+        fontSize: 15,
+        fontWeight: 800,
+        color: "#f59e0b",
+        letterSpacing: "-0.3px",
+      }}>
+        ⚡ +{xp} XP
+      </div>
     </div>
   );
 }
 
 function StarRating({ value, onChange }) {
   return (
-    <div style={styles.starRow}>
+    <div style={{ display: "flex", gap: 6 }}>
       {[1, 2, 3, 4, 5].map(star => (
         <button
           key={star}
           onClick={() => onChange(star)}
           style={{
-            ...styles.starBtn,
-            color: star <= value ? "#f59e0b" : "#2a2a2a",
+            background: "none",
+            border: "none",
+            fontSize: 34,
+            cursor: "pointer",
+            color: star <= value ? "#f59e0b" : "rgba(255,255,255,0.1)",
+            padding: "2px 3px",
+            transition: "color 0.1s",
+            lineHeight: 1,
           }}
         >
           ★
@@ -64,9 +103,16 @@ function StarRating({ value, onChange }) {
   );
 }
 
-function SectionCard({ children, style }) {
+function SectionCard({ children, accentColor, style }) {
   return (
-    <div style={{ ...styles.sectionCard, ...style }}>
+    <div style={{
+      ...glassCard,
+      padding: 18,
+      marginBottom: 12,
+      borderLeft: accentColor ? `4px solid ${accentColor}` : undefined,
+      borderRadius: accentColor ? "0 18px 18px 0" : 18,
+      ...style,
+    }}>
       {children}
     </div>
   );
@@ -74,7 +120,14 @@ function SectionCard({ children, style }) {
 
 function SectionLabel({ children, color }) {
   return (
-    <div style={{ ...styles.sectionLabel, color: color || "#6b7280" }}>
+    <div style={{
+      fontSize: 11,
+      fontWeight: 700,
+      color: color || "#94a3b8",
+      textTransform: "uppercase",
+      letterSpacing: "1.2px",
+      marginBottom: 10,
+    }}>
       {children}
     </div>
   );
@@ -95,13 +148,11 @@ export default function FeedbackScreen({ user, sessionData, opponent, setCurrent
 
     async function saveSession() {
       try {
-        // 1. Save session doc
         await addDoc(collection(db, "users", user.uid, "sessions"), {
           ...sd,
           savedAt: new Date().toISOString(),
         });
 
-        // 2. Update profile
         const profileRef = doc(db, "users", user.uid, "profile", "main");
         const profileSnap = await getDoc(profileRef);
         const today = getTodayDateString();
@@ -125,7 +176,6 @@ export default function FeedbackScreen({ user, sessionData, opponent, setCurrent
             sessionsCount: increment(1),
           });
         } else {
-          // Create profile if missing
           await setDoc(profileRef, {
             xp: sd.xp || 0,
             rank: getRankFromXP(sd.xp || 0),
@@ -147,7 +197,7 @@ export default function FeedbackScreen({ user, sessionData, opponent, setCurrent
     return (
       <div style={styles.errorContainer}>
         <p style={styles.errorText}>No session data found.</p>
-        <button onClick={() => setCurrentScreen("home")} style={styles.navBtn}>
+        <button onClick={() => setCurrentScreen("home")} style={styles.linkBtn}>
           ← Home
         </button>
       </div>
@@ -155,9 +205,7 @@ export default function FeedbackScreen({ user, sessionData, opponent, setCurrent
   }
 
   const confidenceGap = getConfidenceGapInterpretation(selfRating, sd.score);
-  const scoreColor = getScoreColor(sd.score);
 
-  // Filler breakdown for display
   const fillerEntries = sd.fillerCounts
     ? Object.entries(sd.fillerCounts)
         .sort(([, a], [, b]) => b - a)
@@ -167,167 +215,166 @@ export default function FeedbackScreen({ user, sessionData, opponent, setCurrent
   return (
     <div style={styles.container}>
       {/* Score Hero */}
-      <ScoreHero score={sd.score} />
-
-      {/* XP Earned */}
-      <div style={styles.xpEarned}>
-        <span style={styles.xpIcon}>⚡</span>
-        <span style={styles.xpValue}>+{sd.xp} XP</span>
-        <span style={styles.xpLabel}>earned this session</span>
-      </div>
+      <ScoreHero score={sd.score} xp={sd.xp} structureScore={sd.structureScore} />
 
       {/* Self-Confidence Rating */}
-      <SectionCard>
-        <SectionLabel color="#f59e0b">How confident did you feel?</SectionLabel>
-        <StarRating value={selfRating} onChange={setSelfRating} />
+      <div style={styles.content}>
+        <SectionCard accentColor="#f59e0b">
+          <SectionLabel color="#f59e0b">How confident did you feel?</SectionLabel>
+          <StarRating value={selfRating} onChange={setSelfRating} />
+          {selfRating > 0 && confidenceGap && (
+            <p style={styles.confidenceGapText}>{confidenceGap}</p>
+          )}
+        </SectionCard>
+
+        {/* CONFIDENCE READ — indigo left border */}
         {selfRating > 0 && confidenceGap && (
-          <p style={styles.confidenceGapText}>{confidenceGap}</p>
+          <SectionCard accentColor="#6366f1">
+            <SectionLabel color="#6366f1">CONFIDENCE READ</SectionLabel>
+            <p style={styles.bodyText}>{confidenceGap}</p>
+          </SectionCard>
         )}
-      </SectionCard>
 
-      {/* Structure & Fluency */}
-      <SectionCard>
-        <div style={styles.metricsRow}>
-          <div style={styles.metricBlock}>
-            <SectionLabel>Structure Score</SectionLabel>
-            <div style={{ ...styles.metricValue, color: sd.structureScore >= 4 ? "#10b981" : sd.structureScore >= 3 ? "#f59e0b" : "#ef4444" }}>
-              {sd.structureScore}/5
-            </div>
-          </div>
-          <div style={styles.metricDivider} />
-          <div style={styles.metricBlock}>
-            <SectionLabel>Clean Speech</SectionLabel>
-            <div style={{ ...styles.metricValue, color: "#7c3aed" }}>
-              {sd.cleanSpeechPct !== undefined ? `${sd.cleanSpeechPct}%` : "—"}
-            </div>
-          </div>
-        </div>
-      </SectionCard>
+        {/* WHAT YOU NAILED — green left border */}
+        {sd.highlight && (
+          <SectionCard accentColor="#10b981">
+            <SectionLabel color="#10b981">WHAT YOU NAILED</SectionLabel>
+            <p style={styles.bodyText}>{sd.highlight}</p>
+          </SectionCard>
+        )}
 
-      {/* Filler Breakdown */}
-      {fillerEntries.length > 0 && (
-        <SectionCard>
-          <SectionLabel>Filler Words</SectionLabel>
-          <div style={styles.fillerList}>
-            {fillerEntries.map(([word, count]) => (
-              <div key={word} style={styles.fillerItem}>
-                <span style={styles.fillerWord}>"{word}"</span>
-                <span style={styles.fillerCount}>× {count}</span>
-              </div>
-            ))}
-          </div>
-        </SectionCard>
-      )}
-
-      {/* What You Nailed */}
-      {sd.highlight && (
-        <SectionCard style={{ borderColor: "#10b981" }}>
-          <SectionLabel color="#10b981">What You Nailed ✓</SectionLabel>
-          <p style={styles.bodyText}>{sd.highlight}</p>
-        </SectionCard>
-      )}
-
-      {/* Phrases to Retire */}
-      {sd.weakPhrases && sd.weakPhrases.length > 0 && (
-        <SectionCard style={{ borderColor: "#ef4444" }}>
-          <SectionLabel color="#ef4444">Phrases to Retire</SectionLabel>
-          <div style={styles.weakPhraseList}>
-            {sd.weakPhrases.map((phrase, i) => (
-              <div key={i} style={styles.weakPhraseItem}>
-                <span style={styles.weakPhrase}>{phrase}</span>
-              </div>
-            ))}
-          </div>
-        </SectionCard>
-      )}
-
-      {/* Naturalness Check */}
-      {sd.naturalnessFlagsCount > 0 && sd.naturalnessFlagsDetails && (
-        <SectionCard style={{ borderColor: "#f59e0b" }}>
-          <SectionLabel color="#f59e0b">Naturalness Check ⚠️</SectionLabel>
-          <div style={styles.naturalnessFlags}>
-            {sd.naturalnessFlagsDetails.map((flag, i) => (
-              <div key={i} style={styles.naturalnessFlag}>
-                <div style={styles.naturalnessYouSaid}>
-                  You said: <em>"{flag.phrase}"</em>
+        {/* PHRASES TO RETIRE — red left border */}
+        {sd.weakPhrases && sd.weakPhrases.length > 0 && (
+          <SectionCard accentColor="#f43f5e">
+            <SectionLabel color="#f43f5e">PHRASES TO RETIRE</SectionLabel>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {sd.weakPhrases.map((phrase, i) => (
+                <div key={i} style={styles.weakPhraseItem}>
+                  <span style={styles.weakPhrase}>{phrase}</span>
                 </div>
-                <div style={styles.naturalnessCategoryBadge}>
-                  {flag.category}
-                </div>
-                {flag.alternative && flag.alternative !== "none" && (
-                  <div style={styles.naturalnessSayInstead}>
-                    Say instead: <strong>"{flag.alternative}"</strong>
+              ))}
+            </div>
+          </SectionCard>
+        )}
+
+        {/* NATURALNESS CHECK — amber left border */}
+        {sd.naturalnessFlagsCount > 0 && sd.naturalnessFlagsDetails && (
+          <SectionCard accentColor="#f59e0b">
+            <SectionLabel color="#f59e0b">NATURALNESS CHECK</SectionLabel>
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              {sd.naturalnessFlagsDetails.map((flag, i) => (
+                <div key={i} style={styles.naturalnessRow}>
+                  <div style={styles.naturalnessYouSaid}>
+                    You said: <em>"{flag.phrase}"</em>
                   </div>
-                )}
+                  <span style={styles.naturalnessBadge}>{flag.category}</span>
+                  {flag.alternative && flag.alternative !== "none" && (
+                    <div style={styles.naturalnessSayInstead}>
+                      Say instead: <strong>"{flag.alternative}"</strong>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </SectionCard>
+        )}
+
+        {/* Filler Breakdown */}
+        {fillerEntries.length > 0 && (
+          <SectionCard accentColor="#f43f5e">
+            <SectionLabel color="#f43f5e">FILLER WORDS</SectionLabel>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {fillerEntries.map(([word, count]) => (
+                <div key={word} style={styles.fillerItem}>
+                  <span style={styles.fillerWord}>"{word}"</span>
+                  <span style={styles.fillerCount}>× {count}</span>
+                </div>
+              ))}
+            </div>
+          </SectionCard>
+        )}
+
+        {/* USE THESE NEXT TIME — cyan left border */}
+        {sd.powerPhrases && sd.powerPhrases.length > 0 && (
+          <SectionCard accentColor="#06b6d4">
+            <SectionLabel color="#06b6d4">USE THESE NEXT TIME</SectionLabel>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {sd.powerPhrases.map((phrase, i) => (
+                <div key={i} style={styles.powerPhraseItem}>
+                  <span style={styles.powerPhraseNum}>{i + 1}.</span>
+                  <span style={styles.powerPhrase}>"{phrase}"</span>
+                </div>
+              ))}
+            </div>
+          </SectionCard>
+        )}
+
+        {/* STRUCTURE — purple left border */}
+        {(sd.structureTip || sd.structureReplayShow) && (
+          <SectionCard accentColor="#8b5cf6">
+            <SectionLabel color="#8b5cf6">STRUCTURE</SectionLabel>
+            {sd.structureScore !== undefined && (
+              <div style={styles.structureBarRow}>
+                <span style={styles.structureBarLabel}>{sd.structureScore}/5</span>
+                <div style={styles.structureBarTrack}>
+                  <div style={{
+                    ...styles.structureBarFill,
+                    width: `${(sd.structureScore / 5) * 100}%`,
+                    background: sd.structureScore >= 4
+                      ? "linear-gradient(90deg, #10b981, #06b6d4)"
+                      : sd.structureScore >= 3
+                        ? "linear-gradient(90deg, #f59e0b, #f43f5e)"
+                        : "linear-gradient(90deg, #f43f5e, #e11d48)",
+                  }} />
+                </div>
               </div>
-            ))}
-          </div>
-        </SectionCard>
-      )}
-
-      {/* Use These Next Time */}
-      {sd.powerPhrases && sd.powerPhrases.length > 0 && (
-        <SectionCard>
-          <SectionLabel color="#7c3aed">Use These Next Time</SectionLabel>
-          <div style={styles.powerPhraseList}>
-            {sd.powerPhrases.map((phrase, i) => (
-              <div key={i} style={styles.powerPhraseItem}>
-                <span style={styles.powerPhrase}>"{phrase}"</span>
+            )}
+            {sd.structureTip && (
+              <p style={{ ...styles.bodyText, marginBottom: sd.structureReplayShow ? 14 : 0 }}>
+                {sd.structureTip}
+              </p>
+            )}
+            {sd.structureReplayShow && sd.structureReplayTurn && (
+              <div style={styles.replayBlock}>
+                <div style={styles.replayLabel}>What you said:</div>
+                <div style={styles.replayOriginal}>{sd.structureReplayTurn}</div>
+                <div style={styles.replayLabel}>Stronger version:</div>
+                <div style={styles.replayFixed}>{sd.structureReplayFix}</div>
               </div>
-            ))}
-          </div>
-        </SectionCard>
-      )}
+            )}
+          </SectionCard>
+        )}
 
-      {/* Structure Tip */}
-      {sd.structureTip && (
-        <SectionCard>
-          <SectionLabel>Structure Tip</SectionLabel>
-          <p style={styles.bodyText}>{sd.structureTip}</p>
-        </SectionCard>
-      )}
+        {/* COACH'S CALL — white left border, prominent */}
+        {sd.tip && (
+          <SectionCard accentColor="rgba(255,255,255,0.4)" style={{
+            background: "rgba(255,255,255,0.08)",
+          }}>
+            <SectionLabel color="#f1f5f9">COACH'S CALL</SectionLabel>
+            <p style={{ ...styles.bodyText, fontSize: 16, lineHeight: 1.7, color: "#f1f5f9" }}>
+              {sd.tip}
+            </p>
+          </SectionCard>
+        )}
 
-      {/* Structure Replay */}
-      {sd.structureReplayShow && sd.structureReplayTurn && (
-        <SectionCard style={{ borderColor: "#7c3aed" }}>
-          <SectionLabel color="#7c3aed">Structure Replay</SectionLabel>
-          <div style={styles.replaySection}>
-            <div style={styles.replayLabel}>What you said:</div>
-            <div style={styles.replayOriginal}>{sd.structureReplayTurn}</div>
-            <div style={styles.replayLabel}>Stronger version:</div>
-            <div style={styles.replayFixed}>{sd.structureReplayFix}</div>
-          </div>
-        </SectionCard>
-      )}
+        {/* Actions */}
+        <div style={styles.actionRow}>
+          <button
+            onClick={() => setCurrentScreen("preBattle")}
+            style={styles.rematchBtn}
+          >
+            Rematch
+          </button>
+          <button
+            onClick={() => setCurrentScreen("home")}
+            style={styles.homeBtn}
+          >
+            New Arena →
+          </button>
+        </div>
 
-      {/* Coach's Call */}
-      {sd.tip && (
-        <SectionCard style={{ backgroundColor: "rgba(124,58,237,0.06)", borderColor: "rgba(124,58,237,0.25)" }}>
-          <SectionLabel color="#7c3aed">Coach's Call</SectionLabel>
-          <p style={styles.bodyText}>{sd.tip}</p>
-        </SectionCard>
-      )}
-
-      {/* Actions */}
-      <div style={styles.actionRow}>
-        <button
-          onClick={() => {
-            // Rematch: same opponent/scenario, go back to preBattle
-            setCurrentScreen("preBattle");
-          }}
-          style={styles.rematchBtn}
-        >
-          Rematch
-        </button>
-        <button
-          onClick={() => setCurrentScreen("home")}
-          style={styles.homeBtn}
-        >
-          Choose Arena →
-        </button>
+        <div style={{ height: 40 }} />
       </div>
-
-      <div style={styles.bottomSpacer} />
     </div>
   );
 }
@@ -336,201 +383,79 @@ export default function FeedbackScreen({ user, sessionData, opponent, setCurrent
 
 const styles = {
   container: {
-    padding: "16px 16px 0",
-    backgroundColor: "#0f0f0f",
-    color: "#ffffff",
+    color: "#f1f5f9",
     fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-    minHeight: "100vh",
+    minHeight: "100dvh",
   },
   errorContainer: {
     padding: 32,
     textAlign: "center",
-  },
-  errorText: {
-    color: "#9ca3af",
-    marginBottom: 16,
-  },
-  navBtn: {
-    background: "none",
-    border: "1px solid #2a2a2a",
-    color: "#ffffff",
-    padding: "10px 20px",
-    borderRadius: 10,
-    cursor: "pointer",
-    fontSize: 14,
-  },
-  // Score hero
-  scoreHero: {
-    backgroundColor: "#1a1a1a",
-    border: "2px solid",
-    borderRadius: 20,
-    padding: "28px 24px",
-    textAlign: "center",
-    marginBottom: 16,
-  },
-  scoreNumber: {
-    fontSize: 72,
-    fontWeight: 900,
-    lineHeight: 1,
-    letterSpacing: "-2px",
-    marginBottom: 4,
-  },
-  scoreLabel: {
-    fontSize: 22,
-    fontWeight: 800,
-    letterSpacing: "-0.5px",
-  },
-  scoreSubtitle: {
-    fontSize: 13,
-    color: "#6b7280",
-    marginTop: 4,
-  },
-  // XP
-  xpEarned: {
+    minHeight: "100dvh",
     display: "flex",
+    flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
-    marginBottom: 16,
+    gap: 16,
   },
-  xpIcon: {
-    fontSize: 24,
+  errorText: {
+    color: "#94a3b8",
+    fontSize: 15,
   },
-  xpValue: {
-    fontSize: 28,
-    fontWeight: 900,
-    color: "#f59e0b",
-    letterSpacing: "-0.5px",
-  },
-  xpLabel: {
-    fontSize: 13,
-    color: "#6b7280",
-  },
-  // Section card
-  sectionCard: {
-    backgroundColor: "#1a1a1a",
-    border: "1px solid #2a2a2a",
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 12,
-  },
-  sectionLabel: {
-    fontSize: 11,
-    fontWeight: 700,
-    textTransform: "uppercase",
-    letterSpacing: "0.8px",
-    marginBottom: 10,
-  },
-  bodyText: {
-    fontSize: 14,
-    color: "#d1d5db",
-    lineHeight: 1.6,
-    margin: 0,
-  },
-  // Stars
-  starRow: {
-    display: "flex",
-    gap: 4,
-    marginBottom: 8,
-  },
-  starBtn: {
+  linkBtn: {
     background: "none",
     border: "none",
-    fontSize: 32,
+    color: "#6366f1",
+    fontSize: 14,
     cursor: "pointer",
-    padding: "2px 4px",
-    transition: "color 0.1s",
-    lineHeight: 1,
+    textDecoration: "underline",
+  },
+  content: {
+    maxWidth: 640,
+    margin: "0 auto",
+    padding: "0 20px",
+    animation: "slideUp 0.3s ease",
   },
   confidenceGapText: {
     fontSize: 13,
-    color: "#9ca3af",
-    margin: "4px 0 0",
+    color: "#94a3b8",
+    margin: "10px 0 0",
     lineHeight: 1.5,
     fontStyle: "italic",
   },
-  // Metrics row
-  metricsRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: 0,
-  },
-  metricBlock: {
-    flex: 1,
-    textAlign: "center",
-  },
-  metricDivider: {
-    width: 1,
-    height: 40,
-    backgroundColor: "#2a2a2a",
-    margin: "0 16px",
-  },
-  metricValue: {
-    fontSize: 28,
-    fontWeight: 800,
-    letterSpacing: "-0.5px",
-  },
-  // Fillers
-  fillerList: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 6,
-  },
-  fillerItem: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    backgroundColor: "rgba(239,68,68,0.06)",
-    borderRadius: 8,
-    padding: "6px 10px",
-  },
-  fillerWord: {
-    fontSize: 13,
-    color: "#d1d5db",
-  },
-  fillerCount: {
-    fontSize: 13,
-    color: "#ef4444",
-    fontWeight: 700,
+  bodyText: {
+    fontSize: 14,
+    color: "#cbd5e1",
+    lineHeight: 1.65,
+    margin: 0,
   },
   // Weak phrases
-  weakPhraseList: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 6,
-  },
   weakPhraseItem: {
     padding: "6px 10px",
-    backgroundColor: "rgba(239,68,68,0.06)",
+    background: "rgba(244,63,94,0.06)",
     borderRadius: 8,
   },
   weakPhrase: {
     fontSize: 13,
-    color: "#ef4444",
+    color: "#f43f5e",
     textDecoration: "line-through",
   },
   // Naturalness
-  naturalnessFlags: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 12,
-  },
-  naturalnessFlag: {
-    backgroundColor: "rgba(245,158,11,0.06)",
-    borderRadius: 8,
+  naturalnessRow: {
+    background: "rgba(245,158,11,0.06)",
+    borderRadius: 10,
     padding: "10px 12px",
   },
   naturalnessYouSaid: {
     fontSize: 13,
-    color: "#d1d5db",
-    marginBottom: 4,
+    color: "#cbd5e1",
+    marginBottom: 6,
   },
-  naturalnessCategoryBadge: {
+  naturalnessBadge: {
     display: "inline-block",
     fontSize: 10,
     fontWeight: 700,
     color: "#f59e0b",
-    backgroundColor: "rgba(245,158,11,0.12)",
+    background: "rgba(245,158,11,0.12)",
     padding: "2px 8px",
     borderRadius: 20,
     textTransform: "uppercase",
@@ -539,39 +464,87 @@ const styles = {
   },
   naturalnessSayInstead: {
     fontSize: 13,
-    color: "#d1d5db",
+    color: "#cbd5e1",
     lineHeight: 1.5,
   },
-  // Power phrases
-  powerPhraseList: {
+  // Fillers
+  fillerItem: {
     display: "flex",
-    flexDirection: "column",
-    gap: 6,
-  },
-  powerPhraseItem: {
-    padding: "8px 12px",
-    backgroundColor: "rgba(124,58,237,0.08)",
+    justifyContent: "space-between",
+    alignItems: "center",
+    background: "rgba(244,63,94,0.06)",
     borderRadius: 8,
+    padding: "6px 10px",
+  },
+  fillerWord: {
+    fontSize: 13,
+    color: "#cbd5e1",
+  },
+  fillerCount: {
+    fontSize: 13,
+    color: "#f43f5e",
+    fontWeight: 700,
+  },
+  // Power phrases
+  powerPhraseItem: {
+    display: "flex",
+    gap: 8,
+    alignItems: "baseline",
+    padding: "6px 10px",
+    background: "rgba(6,182,212,0.06)",
+    borderRadius: 8,
+  },
+  powerPhraseNum: {
+    fontSize: 12,
+    color: "#06b6d4",
+    fontWeight: 700,
+    flexShrink: 0,
   },
   powerPhrase: {
     fontSize: 13,
-    color: "#c4b5fd",
+    color: "#a5f3fc",
     fontStyle: "italic",
   },
-  // Structure replay
-  replaySection: {},
+  // Structure
+  structureBarRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 12,
+  },
+  structureBarLabel: {
+    fontSize: 14,
+    fontWeight: 700,
+    color: "#8b5cf6",
+    flexShrink: 0,
+  },
+  structureBarTrack: {
+    flex: 1,
+    height: 8,
+    background: "rgba(255,255,255,0.1)",
+    borderRadius: 4,
+    overflow: "hidden",
+  },
+  structureBarFill: {
+    height: "100%",
+    borderRadius: 4,
+    transition: "width 0.5s ease",
+  },
+  replayBlock: {
+    marginTop: 12,
+  },
   replayLabel: {
     fontSize: 11,
-    color: "#6b7280",
+    color: "#64748b",
     fontWeight: 600,
     textTransform: "uppercase",
     letterSpacing: "0.5px",
-    marginBottom: 4,
+    marginBottom: 6,
   },
   replayOriginal: {
     fontSize: 13,
-    color: "#9ca3af",
-    backgroundColor: "#111111",
+    color: "#94a3b8",
+    background: "rgba(255,255,255,0.04)",
     borderRadius: 8,
     padding: "8px 12px",
     marginBottom: 10,
@@ -581,7 +554,7 @@ const styles = {
   replayFixed: {
     fontSize: 13,
     color: "#c4b5fd",
-    backgroundColor: "rgba(124,58,237,0.08)",
+    background: "rgba(139,92,246,0.08)",
     borderRadius: 8,
     padding: "8px 12px",
     lineHeight: 1.5,
@@ -589,32 +562,32 @@ const styles = {
   // Actions
   actionRow: {
     display: "flex",
-    gap: 10,
-    marginTop: 8,
+    gap: 12,
+    marginTop: 16,
   },
   rematchBtn: {
     flex: 1,
-    padding: "14px",
-    backgroundColor: "#1a1a1a",
-    color: "#ffffff",
-    border: "1px solid #2a2a2a",
-    borderRadius: 12,
-    fontSize: 14,
-    fontWeight: 600,
-    cursor: "pointer",
-  },
-  homeBtn: {
-    flex: 2,
-    padding: "14px",
-    backgroundColor: "#7c3aed",
-    color: "#ffffff",
-    border: "none",
-    borderRadius: 12,
+    padding: "15px",
+    background: "rgba(255,255,255,0.06)",
+    color: "#f1f5f9",
+    border: "1px solid rgba(255,255,255,0.12)",
+    borderRadius: 14,
     fontSize: 14,
     fontWeight: 700,
     cursor: "pointer",
+    backdropFilter: "blur(12px)",
+    WebkitBackdropFilter: "blur(12px)",
   },
-  bottomSpacer: {
-    height: 32,
+  homeBtn: {
+    flex: 2,
+    padding: "15px",
+    background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+    color: "#ffffff",
+    border: "none",
+    borderRadius: 14,
+    fontSize: 14,
+    fontWeight: 700,
+    cursor: "pointer",
+    boxShadow: "0 8px 24px rgba(99,102,241,0.3)",
   },
 };

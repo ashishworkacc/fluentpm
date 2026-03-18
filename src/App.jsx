@@ -7,7 +7,7 @@ import PreBattleScreen from "./components/PreBattleScreen.jsx";
 import BattleScreen from "./components/BattleScreen.jsx";
 import FeedbackScreen from "./components/FeedbackScreen.jsx";
 
-// ── Placeholder screens for Week 1 ──────────────────────────────────────────
+// ── Placeholder screens ──────────────────────────────────────────────────────
 
 function LexiconScreen({ setCurrentScreen }) {
   return (
@@ -51,10 +51,16 @@ function SignInScreen({ onSignIn, loading }) {
   return (
     <div style={styles.signInContainer}>
       <div style={styles.signInCard}>
-        <div style={styles.logoMark}>⚡</div>
-        <h1 style={styles.appName}>FluentPM</h1>
+        <div style={styles.signInLogoMark}>
+          <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
+            <circle cx="20" cy="20" r="20" fill="rgba(99,102,241,0.15)" />
+            <path d="M13 28L20 12L27 28" stroke="#6366f1" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M15.5 23H24.5" stroke="#6366f1" strokeWidth="2.5" strokeLinecap="round"/>
+          </svg>
+        </div>
+        <h1 style={styles.signInAppName}>FluentPM</h1>
         <p style={styles.signInTagline}>
-          Train your voice. Own the room.
+          Train your voice.<br />Own the room.
         </p>
         <button
           onClick={onSignIn}
@@ -76,7 +82,10 @@ function SignInScreen({ onSignIn, loading }) {
 function LoadingScreen() {
   return (
     <div style={styles.loadingContainer}>
-      <div style={styles.loadingSpinner}>⚡</div>
+      <div style={styles.loadingRingWrapper}>
+        <div style={styles.loadingRing} />
+        <div style={styles.loadingRingInner} />
+      </div>
       <p style={styles.loadingText}>Loading FluentPM...</p>
     </div>
   );
@@ -85,10 +94,10 @@ function LoadingScreen() {
 // ── Bottom Nav ───────────────────────────────────────────────────────────────
 
 const NAV_TABS = [
-  { id: "home",     label: "Practice", icon: "🏠" },
-  { id: "lexicon",  label: "Lexicon",  icon: "📖" },
-  { id: "progress", label: "Progress", icon: "📊" },
-  { id: "phrases",  label: "Phrases",  icon: "📝" },
+  { id: "home",     label: "Practice" },
+  { id: "lexicon",  label: "Lexicon"  },
+  { id: "progress", label: "Progress" },
+  { id: "phrases",  label: "Phrases"  },
 ];
 
 const SCREENS_WITH_NO_NAV = ["preBattle", "battle", "feedback", "lightning"];
@@ -106,12 +115,11 @@ function BottomNav({ currentScreen, setCurrentScreen }) {
             onClick={() => setCurrentScreen(tab.id)}
             style={{
               ...styles.navTab,
-              color: active ? "#7c3aed" : "#6b7280",
-              borderTop: active ? "2px solid #7c3aed" : "2px solid transparent",
+              color: active ? "#6366f1" : "#94a3b8",
             }}
           >
-            <span style={styles.navIcon}>{tab.icon}</span>
             <span style={styles.navLabel}>{tab.label}</span>
+            {active && <span style={styles.navDot} />}
           </button>
         );
       })}
@@ -224,12 +232,14 @@ export default function App() {
     }
   }
 
+  const hasNav = !SCREENS_WITH_NO_NAV.includes(currentScreen);
+
   return (
     <div style={styles.appRoot}>
-      {/* Top bar with user info and sign out — only on nav screens */}
-      {!SCREENS_WITH_NO_NAV.includes(currentScreen) && (
+      {/* Top bar — only on nav screens */}
+      {hasNav && (
         <div style={styles.topBar}>
-          <span style={styles.topBarLogo}>⚡ FluentPM</span>
+          <span style={styles.topBarLogo}>FluentPM</span>
           <button onClick={handleSignOut} style={styles.signOutBtn}>
             {user.photoURL ? (
               <img
@@ -249,8 +259,8 @@ export default function App() {
 
       <main style={{
         ...styles.mainContent,
-        paddingTop: SCREENS_WITH_NO_NAV.includes(currentScreen) ? 0 : 56,
-        paddingBottom: SCREENS_WITH_NO_NAV.includes(currentScreen) ? 0 : 64,
+        paddingTop: hasNav ? 60 : 0,
+        paddingBottom: hasNav ? 80 : 0,
       }}>
         {renderScreen()}
       </main>
@@ -264,39 +274,35 @@ export default function App() {
 
 const styles = {
   appRoot: {
-    minHeight: "100vh",
-    backgroundColor: "#0f0f0f",
-    color: "#ffffff",
+    minHeight: "100dvh",
+    color: "#f1f5f9",
     fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
     position: "relative",
-    maxWidth: 480,
-    margin: "0 auto",
   },
   mainContent: {
-    overflowY: "auto",
-    minHeight: "100vh",
+    minHeight: "100dvh",
   },
   topBar: {
     position: "fixed",
     top: 0,
-    left: "50%",
-    transform: "translateX(-50%)",
-    width: "100%",
-    maxWidth: 480,
-    height: 56,
-    backgroundColor: "#0f0f0f",
-    borderBottom: "1px solid #1a1a1a",
+    left: 0,
+    right: 0,
+    height: 60,
+    background: "rgba(6,8,24,0.7)",
+    backdropFilter: "blur(20px)",
+    WebkitBackdropFilter: "blur(20px)",
+    borderBottom: "1px solid rgba(255,255,255,0.08)",
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    padding: "0 16px",
+    padding: "0 24px",
     zIndex: 100,
     boxSizing: "border-box",
   },
   topBarLogo: {
     fontSize: 18,
-    fontWeight: 700,
-    color: "#7c3aed",
+    fontWeight: 800,
+    color: "#f1f5f9",
     letterSpacing: "-0.5px",
   },
   signOutBtn: {
@@ -306,16 +312,17 @@ const styles = {
     padding: 0,
   },
   avatarImg: {
-    width: 32,
-    height: 32,
+    width: 34,
+    height: 34,
     borderRadius: "50%",
     display: "block",
+    border: "2px solid rgba(99,102,241,0.5)",
   },
   avatarFallback: {
-    width: 32,
-    height: 32,
+    width: 34,
+    height: 34,
     borderRadius: "50%",
-    backgroundColor: "#7c3aed",
+    background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
     color: "#fff",
     display: "flex",
     alignItems: "center",
@@ -326,13 +333,13 @@ const styles = {
   bottomNav: {
     position: "fixed",
     bottom: 0,
-    left: "50%",
-    transform: "translateX(-50%)",
-    width: "100%",
-    maxWidth: 480,
-    height: 64,
-    backgroundColor: "#0f0f0f",
-    borderTop: "1px solid #1a1a1a",
+    left: 0,
+    right: 0,
+    height: 68,
+    background: "rgba(6,8,24,0.85)",
+    backdropFilter: "blur(20px)",
+    WebkitBackdropFilter: "blur(20px)",
+    borderTop: "1px solid rgba(255,255,255,0.08)",
     display: "flex",
     alignItems: "center",
     justifyContent: "space-around",
@@ -348,100 +355,130 @@ const styles = {
     flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
-    gap: 2,
+    gap: 4,
     padding: "8px 0",
     transition: "color 0.15s",
   },
-  navIcon: {
-    fontSize: 20,
-  },
   navLabel: {
-    fontSize: 10,
-    fontWeight: 500,
+    fontSize: 11,
+    fontWeight: 600,
     letterSpacing: "0.3px",
+  },
+  navDot: {
+    width: 4,
+    height: 4,
+    borderRadius: "50%",
+    backgroundColor: "#6366f1",
+    display: "block",
   },
   // Sign in
   signInContainer: {
-    minHeight: "100vh",
-    backgroundColor: "#0f0f0f",
+    minHeight: "100dvh",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     padding: 24,
+    animation: "fadeIn 0.4s ease",
   },
   signInCard: {
-    backgroundColor: "#1a1a1a",
-    borderRadius: 20,
-    padding: "48px 32px",
+    background: "rgba(255,255,255,0.06)",
+    backdropFilter: "blur(24px)",
+    WebkitBackdropFilter: "blur(24px)",
+    border: "1px solid rgba(255,255,255,0.1)",
+    borderRadius: 24,
+    padding: "52px 40px",
     textAlign: "center",
-    border: "1px solid #2a2a2a",
-    maxWidth: 360,
+    maxWidth: 380,
     width: "100%",
+    boxShadow: "0 40px 80px rgba(0,0,0,0.4)",
   },
-  logoMark: {
-    fontSize: 48,
-    marginBottom: 12,
+  signInLogoMark: {
+    display: "flex",
+    justifyContent: "center",
+    marginBottom: 16,
   },
-  appName: {
-    fontSize: 32,
+  signInAppName: {
+    fontSize: 36,
     fontWeight: 800,
-    color: "#ffffff",
-    margin: "0 0 8px",
-    letterSpacing: "-1px",
+    color: "#f1f5f9",
+    margin: "0 0 10px",
+    letterSpacing: "-1.5px",
   },
   signInTagline: {
-    fontSize: 15,
-    color: "#9ca3af",
-    margin: "0 0 36px",
+    fontSize: 18,
+    fontWeight: 600,
+    color: "#94a3b8",
+    margin: "0 0 40px",
+    lineHeight: 1.5,
   },
   googleBtn: {
     width: "100%",
-    padding: "14px 24px",
-    backgroundColor: "#7c3aed",
+    padding: "15px 24px",
+    background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
     color: "#ffffff",
     border: "none",
-    borderRadius: 12,
+    borderRadius: 14,
     fontSize: 15,
-    fontWeight: 600,
+    fontWeight: 700,
     cursor: "pointer",
     marginBottom: 24,
     transition: "opacity 0.15s",
+    letterSpacing: "0.2px",
   },
   signInFooter: {
     fontSize: 13,
-    color: "#6b7280",
+    color: "#64748b",
     margin: 0,
+    lineHeight: 1.5,
   },
   // Loading
   loadingContainer: {
-    minHeight: "100vh",
-    backgroundColor: "#0f0f0f",
+    minHeight: "100dvh",
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
-    gap: 16,
+    gap: 20,
   },
-  loadingSpinner: {
-    fontSize: 48,
-    animation: "pulse 1.5s ease-in-out infinite",
+  loadingRingWrapper: {
+    position: "relative",
+    width: 56,
+    height: 56,
+  },
+  loadingRing: {
+    position: "absolute",
+    inset: 0,
+    borderRadius: "50%",
+    border: "3px solid rgba(99,102,241,0.2)",
+    borderTopColor: "#6366f1",
+    animation: "spin 0.9s linear infinite",
+  },
+  loadingRingInner: {
+    position: "absolute",
+    inset: 8,
+    borderRadius: "50%",
+    border: "2px solid rgba(139,92,246,0.2)",
+    borderBottomColor: "#8b5cf6",
+    animation: "spin 1.4s linear infinite reverse",
   },
   loadingText: {
-    fontSize: 16,
-    color: "#6b7280",
+    fontSize: 15,
+    color: "#64748b",
+    fontWeight: 500,
   },
   // Placeholder screens
   placeholderContainer: {
-    padding: 32,
+    padding: "60px 32px",
     textAlign: "center",
   },
   placeholderTitle: {
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: 700,
     marginBottom: 12,
+    color: "#f1f5f9",
   },
   placeholderText: {
     fontSize: 15,
-    color: "#6b7280",
+    color: "#64748b",
   },
 };

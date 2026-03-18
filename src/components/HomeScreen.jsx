@@ -37,10 +37,17 @@ function getDaysSince(dateStr) {
   return Math.floor((today - last) / (1000 * 60 * 60 * 24));
 }
 
+function getGreeting() {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 18) return "Good afternoon";
+  return "Good evening";
+}
+
 const DIFFICULTY_COLORS = {
   easy: "#10b981",
   medium: "#f59e0b",
-  hard: "#ef4444",
+  hard: "#f43f5e",
 };
 
 const DEFAULT_PROFILE = {
@@ -52,13 +59,26 @@ const DEFAULT_PROFILE = {
   createdAt: new Date().toISOString(),
 };
 
+// ── Glass card shared style ──────────────────────────────────────────────────
+
+const glassCard = {
+  background: "rgba(255,255,255,0.06)",
+  backdropFilter: "blur(24px)",
+  WebkitBackdropFilter: "blur(24px)",
+  border: "1px solid rgba(255,255,255,0.1)",
+  borderRadius: 20,
+};
+
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 function XPBar({ xp, progress, nextRank, xpNeeded }) {
   return (
     <div style={styles.xpBarContainer}>
       <div style={styles.xpBarTrack}>
-        <div style={{ ...styles.xpBarFill, width: `${Math.round(progress * 100)}%` }} />
+        <div style={{
+          ...styles.xpBarFill,
+          width: `${Math.round(progress * 100)}%`,
+        }} />
       </div>
       <div style={styles.xpBarLabels}>
         <span style={styles.xpText}>{xp} XP</span>
@@ -81,12 +101,12 @@ function RankHeroCard({ rankEmoji, rankLabel, xp, progress, nextRank, xpNeeded, 
         </div>
       </div>
       <div style={styles.rankCardRight}>
-        <div style={styles.rankXP}>{xp} XP</div>
+        <div style={styles.rankXP}>{xp} <span style={styles.rankXPLabel}>XP</span></div>
         <div style={styles.rankProgressTrack}>
           <div style={{ ...styles.rankProgressFill, width: `${Math.round(progress * 100)}%` }} />
         </div>
         {nextRank && (
-          <div style={styles.rankNextLabel}>{xpNeeded} XP to {nextRank}</div>
+          <div style={styles.rankNextLabel}>{xpNeeded} to {nextRank}</div>
         )}
       </div>
     </div>
@@ -97,16 +117,21 @@ function DecayWarningBanner({ daysSince, penalty }) {
   const critical = daysSince >= 2;
   return (
     <div style={{
-      ...styles.decayBanner,
-      borderColor: critical ? "#ef4444" : "#f59e0b",
-      backgroundColor: critical ? "rgba(239,68,68,0.08)" : "rgba(245,158,11,0.08)",
+      ...glassCard,
+      borderColor: critical ? "rgba(244,63,94,0.4)" : "rgba(245,158,11,0.4)",
+      background: critical ? "rgba(244,63,94,0.08)" : "rgba(245,158,11,0.08)",
+      padding: "14px 18px",
+      display: "flex",
+      alignItems: "flex-start",
+      gap: 12,
+      marginBottom: 16,
     }}>
       <span style={{ fontSize: 18 }}>{critical ? "⚠️" : "🕐"}</span>
-      <div style={styles.decayBannerText}>
-        <div style={styles.decayBannerTitle}>
+      <div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: "#f1f5f9", marginBottom: 2 }}>
           {critical ? "XP Decay Active!" : "Play today to keep your streak"}
         </div>
-        <div style={styles.decayBannerSub}>
+        <div style={{ fontSize: 12, color: "#94a3b8" }}>
           {critical
             ? `You haven't played in ${daysSince} days. −${penalty} XP decay applied.`
             : `Last played ${daysSince} day${daysSince !== 1 ? "s" : ""} ago. Don't lose your progress.`}
@@ -118,53 +143,73 @@ function DecayWarningBanner({ daysSince, penalty }) {
 
 function DailyChallengeDoneCard({ onRematch }) {
   return (
-    <div style={styles.doneChallengeCard}>
-      <div style={styles.doneChallengeIcon}>✅</div>
-      <div style={styles.doneChallengeTitle}>Daily Challenge Complete!</div>
-      <div style={styles.doneChallengeText}>Great work today. Come back tomorrow for a new challenge.</div>
+    <div style={{
+      ...glassCard,
+      padding: 28,
+      textAlign: "center",
+      marginBottom: 16,
+      boxShadow: "0 0 0 1px rgba(16,185,129,0.3), 0 20px 60px rgba(16,185,129,0.08)",
+    }}>
+      <div style={{ fontSize: 44, marginBottom: 12 }}>✅</div>
+      <div style={{ fontSize: 20, fontWeight: 700, color: "#10b981", marginBottom: 8 }}>
+        Daily Challenge Complete!
+      </div>
+      <div style={{ fontSize: 14, color: "#94a3b8", marginBottom: 24, lineHeight: 1.5 }}>
+        Great work today. Come back tomorrow for a new challenge.
+      </div>
       <button onClick={onRematch} style={styles.rematchBtn}>Practice Again</button>
     </div>
   );
 }
 
 function DailyChallengeCard({ opponent, scenario, onEnterArena }) {
-  const diffColor = DIFFICULTY_COLORS[scenario.difficulty] || "#6b7280";
+  const diffColor = DIFFICULTY_COLORS[scenario.difficulty] || "#94a3b8";
   const xpRange = scenario.difficulty === "easy"
     ? "15–25 XP"
     : scenario.difficulty === "medium"
       ? "25–40 XP"
       : "35–50 XP";
 
+  const aggrColor = opponent.aggression === "high"
+    ? "#f43f5e"
+    : opponent.aggression === "medium"
+      ? "#f59e0b"
+      : "#10b981";
+
   return (
     <div style={styles.challengeCard}>
+      {/* Label row */}
       <div style={styles.challengeHeader}>
-        <div style={styles.challengeLabel}>Today's Challenge</div>
-        <div style={{ ...styles.difficultyBadge, backgroundColor: `${diffColor}22`, color: diffColor }}>
+        <span style={styles.challengeLabel}>TODAY'S CHALLENGE</span>
+        <span style={{ ...styles.diffBadge, background: `${diffColor}22`, color: diffColor }}>
           {scenario.difficulty.charAt(0).toUpperCase() + scenario.difficulty.slice(1)}
+        </span>
+      </div>
+
+      {/* Opponent */}
+      <div style={styles.opponentBlock}>
+        <div style={styles.opponentAvatarLarge}>{opponent.avatar}</div>
+        <div style={styles.opponentName}>{opponent.name}</div>
+        <div style={styles.opponentRoleRow}>
+          <span style={styles.opponentRole}>{opponent.role}</span>
+          <span style={{ ...styles.aggrBadge, background: `${aggrColor}22`, color: aggrColor }}>
+            {opponent.aggression === "high" ? "High pressure" : opponent.aggression === "medium" ? "Med pressure" : "Low pressure"}
+          </span>
         </div>
       </div>
 
-      <div style={styles.opponentRow}>
-        <div style={styles.opponentAvatar}>{opponent.avatar}</div>
-        <div>
-          <div style={styles.opponentName}>{opponent.name}</div>
-          <div style={styles.opponentRole}>{opponent.role}</div>
-        </div>
-        <div style={{ ...styles.aggressionBadge, color: opponent.aggression === "high" ? "#ef4444" : opponent.aggression === "medium" ? "#f59e0b" : "#10b981" }}>
-          {opponent.aggression === "high" ? "🔥 High" : opponent.aggression === "medium" ? "⚡ Medium" : "💬 Low"}
-        </div>
-      </div>
-
+      {/* Scenario */}
       <div style={styles.scenarioBox}>
         <p style={styles.scenarioText}>"{scenario.text}"</p>
       </div>
 
+      {/* Footer */}
       <div style={styles.challengeFooter}>
         <span style={styles.xpRange}>⚡ {xpRange}</span>
-        <button onClick={onEnterArena} style={styles.enterArenaBtn}>
-          Enter Arena →
-        </button>
       </div>
+      <button onClick={onEnterArena} style={styles.enterArenaBtn}>
+        Enter Arena →
+      </button>
     </div>
   );
 }
@@ -188,12 +233,10 @@ export default function HomeScreen({ user, setCurrentScreen, setPreBattleData })
         if (snap.exists()) {
           const data = snap.data();
           setProfile(data);
-          // Check if today's session is already done
           if (data.lastPlayedDate === today) {
             setTodayDone(true);
           }
         } else {
-          // Create default profile
           await setDoc(ref, DEFAULT_PROFILE);
           setProfile(DEFAULT_PROFILE);
         }
@@ -226,6 +269,8 @@ export default function HomeScreen({ user, setCurrentScreen, setPreBattleData })
     daysSince !== null &&
     daysSince >= 1;
 
+  const firstName = user.displayName ? user.displayName.split(" ")[0] : "";
+
   if (loadingProfile) {
     return (
       <div style={styles.container}>
@@ -236,22 +281,25 @@ export default function HomeScreen({ user, setCurrentScreen, setPreBattleData })
 
   return (
     <div style={styles.container}>
-      {/* XP Bar */}
-      <XPBar
-        xp={progress.xp}
-        progress={progress.nextRankInfo.progress}
-        nextRank={progress.nextRankInfo.nextRank}
-        xpNeeded={progress.nextRankInfo.xpNeeded}
-      />
+      {/* Hero greeting section */}
+      <div style={styles.heroSection}>
+        <div style={styles.greetingLine}>
+          {getGreeting()}{firstName ? `, ${firstName}` : ""}
+        </div>
+        <div style={styles.heroRankRow}>
+          <span style={styles.heroRankName}>{progress.rankEmoji} {progress.rankLabel}</span>
+          {progress.streak > 0 && (
+            <span style={styles.streakPill}>🔥 {progress.streak} day streak</span>
+          )}
+        </div>
 
-      {/* Header row: streak */}
-      <div style={styles.headerRow}>
-        <div style={styles.streakBadge}>
-          🔥 {progress.streak} day streak
-        </div>
-        <div style={styles.rankBadgePill}>
-          {progress.rankEmoji} {progress.rankLabel}
-        </div>
+        {/* XP Bar */}
+        <XPBar
+          xp={progress.xp}
+          progress={progress.nextRankInfo.progress}
+          nextRank={progress.nextRankInfo.nextRank}
+          xpNeeded={progress.nextRankInfo.xpNeeded}
+        />
       </div>
 
       {/* Rank Hero Card */}
@@ -285,9 +333,15 @@ export default function HomeScreen({ user, setCurrentScreen, setPreBattleData })
       )}
 
       {/* Lightning Round */}
-      <button onClick={handleLightningRound} style={styles.lightningBtn}>
-        ⚡ Lightning Round
-        <span style={styles.lightningSubtxt}>Quick 60-second drill</span>
+      <button onClick={handleLightningRound} style={styles.lightningCard}>
+        <div style={styles.lightningLeft}>
+          <span style={styles.lightningBolt}>⚡</span>
+          <div>
+            <div style={styles.lightningTitle}>Lightning Round</div>
+            <div style={styles.lightningSubtxt}>Quick 90-second drill</div>
+          </div>
+        </div>
+        <span style={styles.lightningChevron}>›</span>
       </button>
 
       <div style={styles.bottomSpacer} />
@@ -299,30 +353,66 @@ export default function HomeScreen({ user, setCurrentScreen, setPreBattleData })
 
 const styles = {
   container: {
-    padding: "16px 16px 0",
+    maxWidth: 640,
+    margin: "0 auto",
+    padding: "24px 20px 24px",
     minHeight: "100%",
+    animation: "slideUp 0.3s ease",
   },
   loadingText: {
     textAlign: "center",
-    color: "#6b7280",
+    color: "#94a3b8",
     paddingTop: 80,
     fontSize: 15,
   },
+  // Hero section
+  heroSection: {
+    marginBottom: 20,
+  },
+  greetingLine: {
+    fontSize: 15,
+    color: "#94a3b8",
+    marginBottom: 6,
+    fontWeight: 500,
+  },
+  heroRankRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 16,
+  },
+  heroRankName: {
+    fontSize: 28,
+    fontWeight: 800,
+    color: "#f1f5f9",
+    letterSpacing: "-0.5px",
+  },
+  streakPill: {
+    fontSize: 12,
+    fontWeight: 700,
+    color: "#f59e0b",
+    background: "rgba(245,158,11,0.12)",
+    border: "1px solid rgba(245,158,11,0.2)",
+    padding: "5px 12px",
+    borderRadius: 20,
+  },
   // XP bar
   xpBarContainer: {
-    marginBottom: 12,
+    marginBottom: 4,
   },
   xpBarTrack: {
-    height: 4,
-    backgroundColor: "#2a2a2a",
-    borderRadius: 2,
+    height: 6,
+    background: "rgba(255,255,255,0.08)",
+    borderRadius: 3,
     overflow: "hidden",
-    marginBottom: 4,
+    marginBottom: 6,
   },
   xpBarFill: {
     height: "100%",
-    backgroundColor: "#7c3aed",
-    borderRadius: 2,
+    background: "linear-gradient(90deg, #6366f1, #8b5cf6, #6366f1)",
+    backgroundSize: "200% 100%",
+    animation: "shimmer 2.5s linear infinite",
+    borderRadius: 3,
     transition: "width 0.4s ease",
   },
   xpBarLabels: {
@@ -332,39 +422,17 @@ const styles = {
   },
   xpText: {
     fontSize: 12,
-    color: "#7c3aed",
-    fontWeight: 600,
+    color: "#6366f1",
+    fontWeight: 700,
   },
   xpNextText: {
     fontSize: 11,
-    color: "#6b7280",
-  },
-  // Header row
-  headerRow: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 16,
-  },
-  streakBadge: {
-    fontSize: 13,
-    color: "#f59e0b",
-    fontWeight: 600,
-  },
-  rankBadgePill: {
-    fontSize: 12,
-    color: "#7c3aed",
-    backgroundColor: "rgba(124,58,237,0.12)",
-    padding: "4px 10px",
-    borderRadius: 20,
-    fontWeight: 600,
+    color: "#64748b",
   },
   // Rank hero card
   rankCard: {
-    backgroundColor: "#1a1a1a",
-    border: "1px solid #2a2a2a",
-    borderRadius: 16,
-    padding: "16px 20px",
+    ...glassCard,
+    padding: "18px 22px",
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
@@ -373,34 +441,41 @@ const styles = {
   rankCardLeft: {
     display: "flex",
     alignItems: "center",
-    gap: 12,
+    gap: 14,
   },
   rankEmoji: {
-    fontSize: 36,
+    fontSize: 40,
+    lineHeight: 1,
   },
   rankName: {
-    fontSize: 18,
+    fontSize: 19,
     fontWeight: 700,
-    color: "#ffffff",
-    marginBottom: 2,
+    color: "#f1f5f9",
+    marginBottom: 3,
   },
   sessionsText: {
     fontSize: 12,
-    color: "#6b7280",
+    color: "#64748b",
   },
   rankCardRight: {
     textAlign: "right",
   },
   rankXP: {
-    fontSize: 20,
+    fontSize: 26,
     fontWeight: 800,
-    color: "#7c3aed",
+    color: "#6366f1",
     marginBottom: 6,
+    letterSpacing: "-0.5px",
+  },
+  rankXPLabel: {
+    fontSize: 14,
+    fontWeight: 600,
+    color: "#8b5cf6",
   },
   rankProgressTrack: {
     width: 80,
     height: 4,
-    backgroundColor: "#2a2a2a",
+    background: "rgba(255,255,255,0.1)",
     borderRadius: 2,
     overflow: "hidden",
     marginBottom: 4,
@@ -408,59 +483,35 @@ const styles = {
   },
   rankProgressFill: {
     height: "100%",
-    backgroundColor: "#7c3aed",
+    background: "linear-gradient(90deg, #6366f1, #8b5cf6)",
     borderRadius: 2,
   },
   rankNextLabel: {
     fontSize: 10,
-    color: "#6b7280",
+    color: "#64748b",
     textAlign: "right",
-  },
-  // Decay banner
-  decayBanner: {
-    border: "1px solid",
-    borderRadius: 12,
-    padding: "12px 16px",
-    display: "flex",
-    alignItems: "flex-start",
-    gap: 12,
-    marginBottom: 16,
-  },
-  decayBannerText: {
-    flex: 1,
-  },
-  decayBannerTitle: {
-    fontSize: 13,
-    fontWeight: 700,
-    color: "#ffffff",
-    marginBottom: 2,
-  },
-  decayBannerSub: {
-    fontSize: 12,
-    color: "#9ca3af",
   },
   // Daily challenge card
   challengeCard: {
-    backgroundColor: "#1a1a1a",
-    border: "1px solid #2a2a2a",
-    borderRadius: 16,
-    padding: 20,
+    ...glassCard,
+    padding: 22,
     marginBottom: 16,
+    boxShadow: "0 0 0 1px rgba(99,102,241,0.3), 0 20px 60px rgba(99,102,241,0.1)",
   },
   challengeHeader: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 14,
+    marginBottom: 18,
   },
   challengeLabel: {
     fontSize: 11,
     fontWeight: 700,
-    color: "#6b7280",
+    color: "#06b6d4",
     textTransform: "uppercase",
-    letterSpacing: "0.8px",
+    letterSpacing: "1.5px",
   },
-  difficultyBadge: {
+  diffBadge: {
     fontSize: 11,
     fontWeight: 700,
     padding: "3px 10px",
@@ -468,119 +519,121 @@ const styles = {
     textTransform: "uppercase",
     letterSpacing: "0.5px",
   },
-  opponentRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: 12,
-    marginBottom: 14,
+  opponentBlock: {
+    textAlign: "center",
+    marginBottom: 18,
   },
-  opponentAvatar: {
-    fontSize: 32,
+  opponentAvatarLarge: {
+    fontSize: 64,
     lineHeight: 1,
+    marginBottom: 10,
   },
   opponentName: {
-    fontSize: 15,
+    fontSize: 22,
     fontWeight: 700,
-    color: "#ffffff",
-    marginBottom: 2,
+    color: "#f1f5f9",
+    marginBottom: 6,
+  },
+  opponentRoleRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    flexWrap: "wrap",
   },
   opponentRole: {
-    fontSize: 12,
-    color: "#9ca3af",
+    fontSize: 14,
+    color: "#94a3b8",
   },
-  aggressionBadge: {
-    marginLeft: "auto",
-    fontSize: 12,
-    fontWeight: 600,
+  aggrBadge: {
+    fontSize: 11,
+    fontWeight: 700,
+    padding: "2px 10px",
+    borderRadius: 20,
+    textTransform: "uppercase",
+    letterSpacing: "0.4px",
   },
   scenarioBox: {
-    backgroundColor: "#111111",
-    border: "1px solid #2a2a2a",
-    borderRadius: 10,
-    padding: "12px 14px",
+    background: "rgba(255,255,255,0.04)",
+    border: "1px solid rgba(255,255,255,0.08)",
+    borderRadius: 12,
+    padding: "14px 16px",
     marginBottom: 16,
   },
   scenarioText: {
-    fontSize: 14,
-    color: "#d1d5db",
-    lineHeight: 1.6,
+    fontSize: 17,
+    color: "rgba(255,255,255,0.85)",
+    lineHeight: 1.65,
     margin: 0,
     fontStyle: "italic",
   },
   challengeFooter: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
+    marginBottom: 14,
   },
   xpRange: {
     fontSize: 13,
     color: "#f59e0b",
-    fontWeight: 600,
+    fontWeight: 700,
   },
   enterArenaBtn: {
-    backgroundColor: "#7c3aed",
+    width: "100%",
+    height: 52,
+    background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
     color: "#ffffff",
     border: "none",
-    borderRadius: 10,
-    padding: "10px 20px",
-    fontSize: 14,
+    borderRadius: 14,
+    fontSize: 15,
     fontWeight: 700,
     cursor: "pointer",
-  },
-  // Done card
-  doneChallengeCard: {
-    backgroundColor: "#1a1a1a",
-    border: "1px solid #2a2a2a",
-    borderRadius: 16,
-    padding: 24,
-    textAlign: "center",
-    marginBottom: 16,
-  },
-  doneChallengeIcon: {
-    fontSize: 40,
-    marginBottom: 12,
-  },
-  doneChallengeTitle: {
-    fontSize: 18,
-    fontWeight: 700,
-    color: "#10b981",
-    marginBottom: 8,
-  },
-  doneChallengeText: {
-    fontSize: 14,
-    color: "#9ca3af",
-    marginBottom: 20,
+    letterSpacing: "0.2px",
   },
   rematchBtn: {
-    backgroundColor: "#1f2937",
-    color: "#ffffff",
-    border: "1px solid #2a2a2a",
-    borderRadius: 10,
-    padding: "10px 24px",
+    background: "rgba(255,255,255,0.08)",
+    border: "1px solid rgba(255,255,255,0.15)",
+    color: "#f1f5f9",
+    borderRadius: 12,
+    padding: "11px 28px",
     fontSize: 14,
     fontWeight: 600,
     cursor: "pointer",
   },
-  // Lightning button
-  lightningBtn: {
+  // Lightning card
+  lightningCard: {
     width: "100%",
-    backgroundColor: "#1a1a1a",
-    border: "1px solid #2a2a2a",
-    borderRadius: 16,
+    ...glassCard,
     padding: "16px 20px",
-    color: "#f59e0b",
-    fontSize: 16,
-    fontWeight: 700,
-    cursor: "pointer",
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
     marginBottom: 16,
+    cursor: "pointer",
+    border: "1px solid rgba(255,255,255,0.1)",
+    color: "#f1f5f9",
+  },
+  lightningLeft: {
+    display: "flex",
+    alignItems: "center",
+    gap: 14,
+  },
+  lightningBolt: {
+    fontSize: 24,
+    color: "#f59e0b",
+  },
+  lightningTitle: {
+    fontSize: 16,
+    fontWeight: 700,
+    color: "#f1f5f9",
+    marginBottom: 2,
   },
   lightningSubtxt: {
     fontSize: 12,
-    color: "#6b7280",
-    fontWeight: 400,
+    color: "#94a3b8",
+  },
+  lightningChevron: {
+    fontSize: 22,
+    color: "#64748b",
+    fontWeight: 300,
+    lineHeight: 1,
   },
   bottomSpacer: {
     height: 24,

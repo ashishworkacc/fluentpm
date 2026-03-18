@@ -3,13 +3,21 @@ import { useState } from "react";
 const AGGRESSION_COLORS = {
   low: "#10b981",
   medium: "#f59e0b",
-  high: "#ef4444",
+  high: "#f43f5e",
 };
 
 const AGGRESSION_LABELS = {
   low: "Low pressure",
   medium: "Medium pressure",
   high: "High pressure",
+};
+
+const glassCard = {
+  background: "rgba(255,255,255,0.06)",
+  backdropFilter: "blur(24px)",
+  WebkitBackdropFilter: "blur(24px)",
+  border: "1px solid rgba(255,255,255,0.1)",
+  borderRadius: 20,
 };
 
 export default function PreBattleScreen({
@@ -34,107 +42,106 @@ export default function PreBattleScreen({
   }
 
   function handleEnterArena() {
-    setBattleData({
-      opponent,
-      scenario,
-      outline,
-    });
+    setBattleData({ opponent, scenario, outline });
     setCurrentScreen("battle");
   }
 
-  const aggrColor = AGGRESSION_COLORS[opponent.aggression] || "#6b7280";
+  const aggrColor = AGGRESSION_COLORS[opponent.aggression] || "#94a3b8";
 
   return (
     <div style={styles.container}>
-      {/* Back button */}
-      <button onClick={() => setCurrentScreen("home")} style={styles.backBtn}>
-        ← Back
-      </button>
-
-      <h1 style={styles.pageTitle}>Ready to Battle?</h1>
-
-      {/* Opponent Card */}
-      <div style={styles.opponentCard}>
-        <div style={styles.opponentHeader}>
-          <div style={styles.avatarBlock}>
-            <div style={styles.avatar}>{opponent.avatar}</div>
-          </div>
-          <div style={styles.opponentInfo}>
-            <div style={styles.opponentName}>{opponent.name}</div>
-            <div style={styles.opponentRole}>{opponent.role}</div>
-            <div style={{
-              ...styles.aggressionBadge,
-              backgroundColor: `${aggrColor}22`,
-              color: aggrColor,
-            }}>
-              {AGGRESSION_LABELS[opponent.aggression]}
-            </div>
-          </div>
-        </div>
-        <div style={styles.catchphraseBox}>
-          <p style={styles.catchphrase}>"{opponent.catchphrase}"</p>
-        </div>
-        <p style={styles.opponentDescription}>{opponent.description}</p>
+      {/* Header */}
+      <div style={styles.pageHeader}>
+        <button onClick={() => setCurrentScreen("home")} style={styles.backBtn}>
+          ←
+        </button>
+        <span style={styles.pageHeaderTitle}>{opponent.name}</span>
+        <span style={styles.pageHeaderRight} />
       </div>
 
-      {/* Scenario Card */}
-      <div style={styles.scenarioCard}>
-        <div style={styles.scenarioLabel}>Your Challenge</div>
-        <p style={styles.scenarioText}>"{scenario.text}"</p>
-        <div style={styles.scenariaMeta}>
-          <span style={styles.situationType}>
-            {scenario.situationType.charAt(0).toUpperCase() + scenario.situationType.slice(1)}
-          </span>
-          {scenario.suggestedFramework && (
-            <span style={styles.frameworkHint}>
-              💡 Try: {scenario.suggestedFramework}
-            </span>
+      <div style={styles.content}>
+        {/* Opponent Card */}
+        <div style={styles.opponentCard}>
+          <div style={styles.avatarLarge}>{opponent.avatar}</div>
+          <div style={styles.opponentName}>{opponent.name}</div>
+          <div style={styles.opponentRole}>{opponent.role}</div>
+          <div style={{
+            ...styles.aggressionBadge,
+            background: `${aggrColor}22`,
+            color: aggrColor,
+          }}>
+            {AGGRESSION_LABELS[opponent.aggression]}
+          </div>
+          <div style={styles.catchphraseBox}>
+            <p style={styles.catchphrase}>"{opponent.catchphrase}"</p>
+          </div>
+          {opponent.description && (
+            <p style={styles.opponentDescription}>{opponent.description}</p>
           )}
         </div>
-      </div>
 
-      {/* Outline Mode */}
-      <div style={styles.outlineSection}>
-        <button
-          onClick={() => setOutlineOpen(v => !v)}
-          style={styles.outlineToggle}
-        >
-          <span>📝 Plan your response</span>
-          <span style={styles.toggleArrow}>{outlineOpen ? "▲" : "▼"}</span>
-        </button>
-
-        {outlineOpen && (
-          <div style={styles.outlineBody}>
-            <p style={styles.outlineHint}>
-              Jot down 2–3 key points before you speak. This helps you structure your answer.
-            </p>
-            <textarea
-              value={outline}
-              onChange={e => setOutline(e.target.value)}
-              placeholder="e.g.&#10;1. Acknowledge the concern&#10;2. Share what we know&#10;3. Next steps and timeline"
-              rows={6}
-              style={styles.outlineTextarea}
-            />
+        {/* Scenario Card */}
+        <div style={styles.scenarioCard}>
+          <div style={styles.scenarioLabel}>THE SCENARIO</div>
+          <p style={styles.scenarioText}>"{scenario.text}"</p>
+          <div style={styles.scenarioMeta}>
+            <span style={styles.situationType}>
+              {scenario.situationType.charAt(0).toUpperCase() + scenario.situationType.slice(1)}
+            </span>
+            {scenario.suggestedFramework && (
+              <span style={styles.frameworkHint}>
+                Try: {scenario.suggestedFramework}
+              </span>
+            )}
           </div>
-        )}
+        </div>
+
+        {/* Outline — collapsible */}
+        <div style={styles.outlineSection}>
+          <button
+            onClick={() => setOutlineOpen(v => !v)}
+            style={styles.outlineToggle}
+          >
+            <span>Plan your response {outlineOpen ? "−" : "+"}</span>
+            <span style={styles.toggleHint}>{outlineOpen ? "collapse" : "optional"}</span>
+          </button>
+
+          {outlineOpen && (
+            <div style={styles.outlineBody}>
+              <p style={styles.outlineHint}>
+                Jot down 2–3 key points before you speak.
+              </p>
+              <textarea
+                value={outline}
+                onChange={e => setOutline(e.target.value)}
+                placeholder={"e.g.\n1. Acknowledge the concern\n2. Share what we know\n3. Next steps and timeline"}
+                rows={6}
+                style={styles.outlineTextarea}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Battle Rules */}
+        <div style={styles.tipsCard}>
+          <div style={styles.tipsTitle}>BATTLE RULES</div>
+          <ul style={styles.tipsList}>
+            <li style={styles.tipItem}>You get <strong>3 turns</strong> to make your case.</li>
+            <li style={styles.tipItem}>Speak clearly — the AI listens and scores you.</li>
+            <li style={styles.tipItem}>No jargon. No waffle. Be specific.</li>
+          </ul>
+        </div>
+
+        {/* Spacer for fixed button on mobile */}
+        <div style={{ height: 90 }} />
       </div>
 
-      {/* Tips */}
-      <div style={styles.tipsCard}>
-        <div style={styles.tipsTitle}>Battle Rules</div>
-        <ul style={styles.tipsList}>
-          <li style={styles.tipItem}>You get <strong>3 turns</strong> to make your case.</li>
-          <li style={styles.tipItem}>Speak clearly — the AI listens and scores you.</li>
-          <li style={styles.tipItem}>No jargon. No waffle. Be specific.</li>
-        </ul>
+      {/* Enter Arena — fixed bottom */}
+      <div style={styles.enterArenaFixed}>
+        <button onClick={handleEnterArena} style={styles.enterBtn}>
+          Enter Arena →
+        </button>
       </div>
-
-      {/* Enter Arena CTA */}
-      <button onClick={handleEnterArena} style={styles.enterBtn}>
-        Enter Arena →
-      </button>
-
-      <div style={styles.bottomSpacer} />
     </div>
   );
 }
@@ -143,138 +150,159 @@ export default function PreBattleScreen({
 
 const styles = {
   container: {
-    padding: "16px 16px 0",
-    minHeight: "100vh",
-    backgroundColor: "#0f0f0f",
-    color: "#ffffff",
+    minHeight: "100dvh",
+    color: "#f1f5f9",
     fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+    position: "relative",
   },
   errorContainer: {
     padding: 32,
     textAlign: "center",
+    minHeight: "100dvh",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 16,
   },
   errorText: {
-    color: "#9ca3af",
-    marginBottom: 16,
+    color: "#94a3b8",
+    fontSize: 15,
+  },
+  // Header
+  pageHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "16px 20px 8px",
+    position: "sticky",
+    top: 0,
+    background: "rgba(6,8,24,0.7)",
+    backdropFilter: "blur(20px)",
+    WebkitBackdropFilter: "blur(20px)",
+    borderBottom: "1px solid rgba(255,255,255,0.06)",
+    zIndex: 10,
   },
   backBtn: {
     background: "none",
     border: "none",
-    color: "#9ca3af",
-    fontSize: 14,
+    color: "#94a3b8",
+    fontSize: 22,
     cursor: "pointer",
-    padding: "8px 0",
-    marginBottom: 16,
-    display: "block",
+    padding: "4px 8px",
+    lineHeight: 1,
+    fontWeight: 300,
   },
-  pageTitle: {
-    fontSize: 26,
-    fontWeight: 800,
-    color: "#ffffff",
-    marginBottom: 20,
-    letterSpacing: "-0.5px",
+  pageHeaderTitle: {
+    fontSize: 16,
+    fontWeight: 700,
+    color: "#f1f5f9",
   },
-  // Opponent card
+  pageHeaderRight: {
+    width: 40,
+  },
+  content: {
+    maxWidth: 600,
+    margin: "0 auto",
+    padding: "20px 20px 0",
+    animation: "slideUp 0.3s ease",
+  },
+  // Opponent card — centered
   opponentCard: {
-    backgroundColor: "#1a1a1a",
-    border: "1px solid #2a2a2a",
-    borderRadius: 16,
-    padding: 20,
+    ...glassCard,
+    padding: "28px 24px",
+    textAlign: "center",
     marginBottom: 16,
   },
-  opponentHeader: {
-    display: "flex",
-    gap: 16,
+  avatarLarge: {
+    fontSize: 80,
+    lineHeight: 1,
     marginBottom: 14,
   },
-  avatarBlock: {},
-  avatar: {
-    fontSize: 48,
-    lineHeight: 1,
-  },
-  opponentInfo: {
-    flex: 1,
-  },
   opponentName: {
-    fontSize: 18,
-    fontWeight: 700,
-    color: "#ffffff",
-    marginBottom: 2,
+    fontSize: 28,
+    fontWeight: 800,
+    color: "#f1f5f9",
+    marginBottom: 6,
+    letterSpacing: "-0.5px",
   },
   opponentRole: {
-    fontSize: 13,
-    color: "#9ca3af",
-    marginBottom: 8,
+    fontSize: 16,
+    color: "#94a3b8",
+    marginBottom: 12,
   },
   aggressionBadge: {
     display: "inline-block",
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: 700,
-    padding: "3px 10px",
+    padding: "4px 14px",
     borderRadius: 20,
     textTransform: "uppercase",
     letterSpacing: "0.5px",
+    marginBottom: 18,
   },
   catchphraseBox: {
-    backgroundColor: "#111111",
-    border: "1px solid #2a2a2a",
-    borderRadius: 10,
-    padding: "10px 14px",
+    background: "rgba(255,255,255,0.04)",
+    border: "1px solid rgba(255,255,255,0.08)",
+    borderRadius: 12,
+    padding: "12px 16px",
     marginBottom: 12,
   },
   catchphrase: {
-    fontSize: 14,
-    color: "#d1d5db",
+    fontSize: 15,
+    color: "rgba(255,255,255,0.75)",
     fontStyle: "italic",
     margin: 0,
     lineHeight: 1.5,
   },
   opponentDescription: {
     fontSize: 13,
-    color: "#9ca3af",
+    color: "#94a3b8",
     lineHeight: 1.6,
     margin: 0,
   },
-  // Scenario card
+  // Scenario card — cyan left border
   scenarioCard: {
-    backgroundColor: "#1a1a1a",
-    border: "1px solid #2a2a2a",
-    borderRadius: 16,
+    ...glassCard,
     padding: 20,
     marginBottom: 16,
+    borderLeft: "4px solid #06b6d4",
+    borderRadius: "0 20px 20px 0",
   },
   scenarioLabel: {
     fontSize: 11,
     fontWeight: 700,
-    color: "#6b7280",
+    color: "#06b6d4",
     textTransform: "uppercase",
-    letterSpacing: "0.8px",
+    letterSpacing: "1.5px",
     marginBottom: 10,
   },
   scenarioText: {
-    fontSize: 15,
-    color: "#ffffff",
+    fontSize: 17,
+    color: "#f1f5f9",
     lineHeight: 1.6,
     margin: "0 0 14px",
     fontStyle: "italic",
   },
-  scenariaMeta: {
+  scenarioMeta: {
     display: "flex",
     gap: 10,
     alignItems: "center",
+    flexWrap: "wrap",
   },
   situationType: {
     fontSize: 11,
-    color: "#7c3aed",
-    backgroundColor: "rgba(124,58,237,0.12)",
+    color: "#6366f1",
+    background: "rgba(99,102,241,0.12)",
     padding: "3px 10px",
     borderRadius: 20,
-    fontWeight: 600,
+    fontWeight: 700,
     textTransform: "capitalize",
   },
   frameworkHint: {
     fontSize: 12,
     color: "#f59e0b",
+    fontWeight: 500,
   },
   // Outline
   outlineSection: {
@@ -282,11 +310,9 @@ const styles = {
   },
   outlineToggle: {
     width: "100%",
-    backgroundColor: "#1a1a1a",
-    border: "1px solid #2a2a2a",
-    borderRadius: 12,
-    padding: "14px 16px",
-    color: "#ffffff",
+    ...glassCard,
+    padding: "14px 18px",
+    color: "#f1f5f9",
     fontSize: 14,
     fontWeight: 600,
     cursor: "pointer",
@@ -294,31 +320,33 @@ const styles = {
     justifyContent: "space-between",
     alignItems: "center",
     textAlign: "left",
+    borderRadius: 14,
   },
-  toggleArrow: {
+  toggleHint: {
     fontSize: 12,
-    color: "#6b7280",
+    color: "#64748b",
+    fontWeight: 400,
   },
   outlineBody: {
-    backgroundColor: "#1a1a1a",
-    border: "1px solid #2a2a2a",
+    background: "rgba(255,255,255,0.04)",
+    border: "1px solid rgba(255,255,255,0.08)",
     borderTop: "none",
-    borderRadius: "0 0 12px 12px",
+    borderRadius: "0 0 14px 14px",
     padding: 16,
   },
   outlineHint: {
     fontSize: 12,
-    color: "#6b7280",
+    color: "#64748b",
     marginBottom: 10,
     lineHeight: 1.5,
   },
   outlineTextarea: {
     width: "100%",
-    backgroundColor: "#111111",
-    border: "1px solid #2a2a2a",
-    borderRadius: 8,
+    background: "rgba(255,255,255,0.04)",
+    border: "1px solid rgba(255,255,255,0.1)",
+    borderRadius: 10,
     padding: 12,
-    color: "#ffffff",
+    color: "#f1f5f9",
     fontSize: 13,
     lineHeight: 1.6,
     resize: "vertical",
@@ -328,44 +356,51 @@ const styles = {
   },
   // Tips
   tipsCard: {
-    backgroundColor: "rgba(124,58,237,0.08)",
-    border: "1px solid rgba(124,58,237,0.2)",
-    borderRadius: 12,
+    background: "rgba(99,102,241,0.07)",
+    border: "1px solid rgba(99,102,241,0.2)",
+    borderRadius: 14,
     padding: 16,
     marginBottom: 24,
   },
   tipsTitle: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: 700,
-    color: "#7c3aed",
+    color: "#6366f1",
     textTransform: "uppercase",
-    letterSpacing: "0.8px",
+    letterSpacing: "1px",
     marginBottom: 10,
   },
   tipsList: {
     margin: 0,
-    paddingLeft: 16,
+    paddingLeft: 18,
   },
   tipItem: {
     fontSize: 13,
-    color: "#d1d5db",
+    color: "#cbd5e1",
     lineHeight: 1.6,
     marginBottom: 4,
   },
-  // CTA
+  // Fixed CTA
+  enterArenaFixed: {
+    position: "fixed",
+    bottom: 24,
+    left: 20,
+    right: 20,
+    maxWidth: 560,
+    margin: "0 auto",
+    zIndex: 20,
+  },
   enterBtn: {
     width: "100%",
-    backgroundColor: "#7c3aed",
+    height: 58,
+    background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
     color: "#ffffff",
     border: "none",
-    borderRadius: 14,
-    padding: "16px 24px",
-    fontSize: 16,
-    fontWeight: 700,
+    borderRadius: 16,
+    fontSize: 17,
+    fontWeight: 800,
     cursor: "pointer",
-    marginBottom: 16,
-  },
-  bottomSpacer: {
-    height: 24,
+    letterSpacing: "0.3px",
+    boxShadow: "0 8px 32px rgba(99,102,241,0.4)",
   },
 };

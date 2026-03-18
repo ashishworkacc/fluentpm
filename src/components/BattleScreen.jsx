@@ -5,25 +5,48 @@ import { analyseTranscript } from "../hooks/useRealTimeAnalysis.js";
 
 const MAX_TURNS = 3;
 
-// ── Message Bubble ────────────────────────────────────────────────────────────
+const glassCard = {
+  background: "rgba(255,255,255,0.06)",
+  backdropFilter: "blur(24px)",
+  WebkitBackdropFilter: "blur(24px)",
+  border: "1px solid rgba(255,255,255,0.1)",
+  borderRadius: 16,
+};
+
+// ── Message Bubble ─────────────────────────────────────────────────────────
 
 function MessageBubble({ message, opponent }) {
   const isOpponent = message.role === "opponent";
   return (
     <div style={{
-      ...styles.bubbleRow,
+      display: "flex",
+      alignItems: "flex-end",
+      gap: 8,
       justifyContent: isOpponent ? "flex-start" : "flex-end",
+      animation: "slideUp 0.2s ease",
     }}>
       {isOpponent && (
         <div style={styles.opponentAvatarSmall}>{opponent.avatar}</div>
       )}
       <div style={{
-        ...styles.bubble,
-        backgroundColor: isOpponent ? "#1a1a1a" : "#7c3aed",
+        padding: "11px 16px",
         borderRadius: isOpponent ? "4px 16px 16px 16px" : "16px 4px 16px 16px",
         maxWidth: isOpponent ? "80%" : "75%",
+        background: isOpponent
+          ? "rgba(255,255,255,0.06)"
+          : "linear-gradient(135deg, rgba(99,102,241,0.6), rgba(139,92,246,0.6))",
+        border: isOpponent
+          ? "1px solid rgba(255,255,255,0.1)"
+          : "1px solid rgba(99,102,241,0.3)",
+        backdropFilter: "blur(12px)",
+        WebkitBackdropFilter: "blur(12px)",
       }}>
-        <p style={styles.bubbleText}>{message.text}</p>
+        <p style={{
+          margin: 0,
+          fontSize: 14,
+          lineHeight: 1.6,
+          color: "#f1f5f9",
+        }}>{message.text}</p>
       </div>
     </div>
   );
@@ -31,10 +54,14 @@ function MessageBubble({ message, opponent }) {
 
 function TypingIndicator({ opponent }) {
   return (
-    <div style={styles.bubbleRow}>
+    <div style={{ display: "flex", alignItems: "flex-end", gap: 8 }}>
       <div style={styles.opponentAvatarSmall}>{opponent.avatar}</div>
-      <div style={{ ...styles.bubble, backgroundColor: "#1a1a1a", borderRadius: "4px 16px 16px 16px" }}>
-        <div style={styles.typingDots}>
+      <div style={{
+        ...glassCard,
+        padding: "12px 16px",
+        borderRadius: "4px 16px 16px 16px",
+      }}>
+        <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
           <span style={{ ...styles.dot, animationDelay: "0s" }}>•</span>
           <span style={{ ...styles.dot, animationDelay: "0.2s" }}>•</span>
           <span style={{ ...styles.dot, animationDelay: "0.4s" }}>•</span>
@@ -44,7 +71,29 @@ function TypingIndicator({ opponent }) {
   );
 }
 
-// ── Main Component ────────────────────────────────────────────────────────────
+// ── Turn dots ─────────────────────────────────────────────────────────────
+
+function TurnDots({ currentTurn, maxTurns }) {
+  return (
+    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+      {Array.from({ length: maxTurns }).map((_, i) => (
+        <div key={i} style={{
+          width: 8,
+          height: 8,
+          borderRadius: "50%",
+          background: i < currentTurn
+            ? "#6366f1"
+            : i === currentTurn
+              ? "rgba(99,102,241,0.5)"
+              : "rgba(255,255,255,0.15)",
+          transition: "background 0.3s",
+        }} />
+      ))}
+    </div>
+  );
+}
+
+// ── Main Component ────────────────────────────────────────────────────────
 
 export default function BattleScreen({
   user,
@@ -101,7 +150,6 @@ export default function BattleScreen({
     async function getOpenerLine() {
       setIsOpponentTyping(true);
       try {
-        // Send an empty messages array — the AI will use the scenario context to open
         const systemHint = {
           targetInstruction: "",
           frameworkInstruction: scenario.suggestedFramework
@@ -117,12 +165,10 @@ export default function BattleScreen({
           scenario,
           systemHint
         );
-        // Use just the first paragraph before any ###FEEDBACK### marker
         const cleanReply = reply.split("###FEEDBACK###")[0].trim();
         setMessages([{ role: "opponent", text: cleanReply }]);
       } catch (err) {
         console.error("Opener error:", err);
-        // Fallback: use the scenario text directly as the opener
         setMessages([{ role: "opponent", text: scenario.text }]);
       } finally {
         setIsOpponentTyping(false);
@@ -132,7 +178,7 @@ export default function BattleScreen({
     getOpenerLine();
   }, [opponent, scenario, outline]);
 
-  // ── Mic handling ─────────────────────────────────────────────────────────
+  // ── Mic handling ────────────────────────────────────────────────────────
 
   function handleMicClick() {
     if (micState !== "idle") return;
@@ -143,7 +189,6 @@ export default function BattleScreen({
     recognitionRef.current = startRecognition(
       (transcript, isFinal) => {
         setLiveTranscript(transcript);
-        // Real-time filler analysis
         const analysis = analyseTranscript(transcript);
         setFillerCounts(analysis.fillerCounts);
         const entries = Object.entries(analysis.fillerCounts).sort(([, a], [, b]) => b - a);
@@ -160,7 +205,6 @@ export default function BattleScreen({
         }
       },
       () => {
-        // onEnd — if not already in confirming state, move there
         setMicState(prev => (prev === "recording" ? "confirming" : prev));
       }
     );
@@ -206,7 +250,7 @@ export default function BattleScreen({
     submitUserTurn(text);
   }
 
-  // ── Core turn logic ───────────────────────────────────────────────────────
+  // ── Core turn logic ──────────────────────────────────────────────────────
 
   async function submitUserTurn(userText) {
     if (sessionComplete) return;
@@ -223,7 +267,6 @@ export default function BattleScreen({
     const updatedMessages = [...messages, userMessage];
     setMessages(updatedMessages);
 
-    // Convert to OpenRouter format
     const apiMessages = updatedMessages.map(m => ({
       role: m.role === "opponent" ? "assistant" : "user",
       content: m.text,
@@ -249,7 +292,6 @@ export default function BattleScreen({
       }
 
       if (feedbackBlock) {
-        // Session complete — build session data and navigate
         setSessionComplete(true);
 
         const sessionDataObj = {
@@ -271,7 +313,6 @@ export default function BattleScreen({
 
         setSessionData(sessionDataObj);
 
-        // Short delay so user can see the final opponent message
         setTimeout(() => {
           setCurrentScreen("feedback");
         }, 1800);
@@ -287,47 +328,40 @@ export default function BattleScreen({
     }
   }
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  // ── Render ───────────────────────────────────────────────────────────────
 
   if (!opponent || !scenario) {
     return (
       <div style={styles.errorContainer}>
         <p style={styles.errorText}>No battle data found.</p>
-        <button onClick={() => setCurrentScreen("home")} style={styles.backBtn}>
+        <button onClick={() => setCurrentScreen("home")} style={styles.linkBtn}>
           ← Home
         </button>
       </div>
     );
   }
 
-  const turnLabel = `Turn ${Math.min(currentTurn + 1, MAX_TURNS)} of ${MAX_TURNS}`;
   const turnsLeft = MAX_TURNS - currentTurn;
+  const showMicSection = !sessionComplete;
 
   return (
     <div style={styles.container}>
-      {/* Header */}
+      {/* Glass header */}
       <div style={styles.header}>
-        <button onClick={() => setCurrentScreen("home")} style={styles.exitBtn}>
-          ✕
-        </button>
-        <div style={styles.headerCenter}>
-          <span style={styles.opponentAvatarHeader}>{opponent.avatar}</span>
+        <div style={styles.headerLeft}>
+          <span style={styles.headerAvatar}>{opponent.avatar}</span>
           <div>
             <div style={styles.headerName}>{opponent.name}</div>
             <div style={styles.headerRole}>{opponent.role}</div>
           </div>
         </div>
-        <div style={styles.turnBadge}>{sessionComplete ? "Done" : turnLabel}</div>
+        <TurnDots currentTurn={currentTurn} maxTurns={MAX_TURNS} />
+        <div style={styles.turnBadge}>
+          {sessionComplete ? "Done" : `${Math.min(currentTurn + 1, MAX_TURNS)}/${MAX_TURNS}`}
+        </div>
       </div>
 
-      {/* Filler counter */}
-      {micState === "recording" && topFiller && topFillerCount > 0 && (
-        <div style={styles.fillerBanner}>
-          ⚠️ Top filler: "<strong>{topFiller}</strong>" × {topFillerCount}
-        </div>
-      )}
-
-      {/* Messages */}
+      {/* Messages — scrollable */}
       <div style={styles.messagesContainer}>
         {messages.map((msg, i) => (
           <MessageBubble key={i} message={msg} opponent={opponent} />
@@ -336,20 +370,27 @@ export default function BattleScreen({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input area */}
-      {!sessionComplete && (
-        <div style={styles.inputArea}>
+      {/* Input / mic section — fixed bottom */}
+      {showMicSection && (
+        <div style={styles.micPanel}>
           {error && (
             <div style={styles.errorBanner}>
-              {error}
+              <span>{error}</span>
               <button onClick={() => setError(null)} style={styles.errorDismiss}>✕</button>
+            </div>
+          )}
+
+          {/* Filler pill */}
+          {micState === "recording" && topFiller && topFillerCount > 0 && (
+            <div style={styles.fillerPill}>
+              {topFiller} ×{topFillerCount}
             </div>
           )}
 
           {/* Live transcript */}
           {micState === "recording" && liveTranscript && (
             <div style={styles.liveTranscriptBox}>
-              <div style={styles.liveLabel}>🎙 Listening...</div>
+              <div style={styles.liveLabel}>Listening...</div>
               <p style={styles.liveText}>{liveTranscript}</p>
             </div>
           )}
@@ -357,11 +398,11 @@ export default function BattleScreen({
           {/* Confirm state */}
           {micState === "confirming" && !isEditing && (
             <div style={styles.confirmBox}>
-              <div style={styles.confirmLabel}>Is this what you said?</div>
+              <div style={styles.confirmLabel}>What you said:</div>
               <p style={styles.confirmText}>{confirmedTranscript}</p>
               <div style={styles.confirmBtns}>
                 <button onClick={handleEdit} style={styles.editBtn}>Edit</button>
-                <button onClick={handleConfirm} style={styles.confirmBtn}>Yes, send it ✓</button>
+                <button onClick={handleConfirm} style={styles.confirmBtn}>Looks good →</button>
               </div>
             </div>
           )}
@@ -386,74 +427,80 @@ export default function BattleScreen({
           {/* Sending indicator */}
           {micState === "sending" && (
             <div style={styles.sendingBox}>
-              <div style={styles.sendingText}>Thinking...</div>
+              <div style={styles.sendingSpinner} />
+              <span style={styles.sendingText}>Processing...</span>
             </div>
           )}
 
-          {/* Idle state — mic or text input */}
-          {(micState === "idle" || micState === "nomic") && !isOpponentTyping && messages.length > 0 && (
-            <div style={styles.idleControls}>
-              {micSupported ? (
-                <div style={styles.micArea}>
-                  <div style={styles.turnsLeftText}>
-                    {turnsLeft > 0 ? `${turnsLeft} turn${turnsLeft !== 1 ? "s" : ""} left` : "Last turn"}
-                  </div>
-                  <button onClick={handleMicClick} style={styles.micBtn}>
-                    🎙 Tap to Speak
-                  </button>
-                  <div style={styles.textToggleArea}>
-                    <button
-                      onClick={() => setMicState("nomic")}
-                      style={styles.typeInsteadBtn}
-                    >
-                      Type instead
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div style={styles.textInputArea}>
-                  <div style={styles.turnsLeftText}>
-                    {turnsLeft > 0 ? `${turnsLeft} turn${turnsLeft !== 1 ? "s" : ""} left` : "Last turn"}
-                  </div>
-                  <textarea
-                    value={textInput}
-                    onChange={e => setTextInput(e.target.value)}
-                    placeholder="Type your response..."
-                    rows={3}
-                    style={styles.textInputBox}
-                    onKeyDown={e => {
-                      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-                        handleTextSubmit();
-                      }
-                    }}
-                  />
-                  <button
-                    onClick={handleTextSubmit}
-                    disabled={!textInput.trim()}
-                    style={{
-                      ...styles.sendTextBtn,
-                      opacity: textInput.trim() ? 1 : 0.4,
-                    }}
-                  >
-                    Send →
-                  </button>
-                  {micSupported && (
-                    <button onClick={() => setMicState("idle")} style={styles.typeInsteadBtn}>
-                      Use mic instead
-                    </button>
-                  )}
-                </div>
-              )}
+          {/* Idle — mic button */}
+          {micState === "idle" && !isOpponentTyping && messages.length > 0 && (
+            <div style={styles.idleMicArea}>
+              <div style={styles.micButtonWrapper}>
+                <button
+                  onClick={handleMicClick}
+                  style={styles.micButton}
+                >
+                  🎤
+                </button>
+              </div>
+              <div style={styles.tapToSpeakLabel}>
+                Tap to speak · {turnsLeft} turn{turnsLeft !== 1 ? "s" : ""} left
+              </div>
+              <button onClick={() => setMicState("nomic")} style={styles.typeInsteadBtn}>
+                Type instead
+              </button>
             </div>
           )}
 
           {/* Recording active */}
           {micState === "recording" && (
             <div style={styles.recordingArea}>
-              <div style={styles.recordingPulse}>🔴 Recording</div>
-              <button onClick={handleStopRecording} style={styles.stopBtn}>
-                Stop ■
-              </button>
+              <div style={styles.recordingRingWrapper}>
+                <div style={styles.recordingRingOuter} />
+                <div style={styles.recordingRingInnerOuter} />
+                <button onClick={handleStopRecording} style={styles.recordingButton}>
+                  🎤
+                </button>
+              </div>
+              <div style={styles.recordingLabel}>Recording... tap to stop</div>
+            </div>
+          )}
+
+          {/* No mic / text input */}
+          {micState === "nomic" && !isOpponentTyping && messages.length > 0 && (
+            <div style={styles.textInputArea}>
+              <div style={styles.turnsLeftText}>
+                {turnsLeft > 0 ? `${turnsLeft} turn${turnsLeft !== 1 ? "s" : ""} left` : "Last turn"}
+              </div>
+              <div style={styles.textInputRow}>
+                <textarea
+                  value={textInput}
+                  onChange={e => setTextInput(e.target.value)}
+                  placeholder="Type your response..."
+                  rows={3}
+                  style={styles.textInputBox}
+                  onKeyDown={e => {
+                    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                      handleTextSubmit();
+                    }
+                  }}
+                />
+                <button
+                  onClick={handleTextSubmit}
+                  disabled={!textInput.trim()}
+                  style={{
+                    ...styles.sendTextBtn,
+                    opacity: textInput.trim() ? 1 : 0.4,
+                  }}
+                >
+                  →
+                </button>
+              </div>
+              {micSupported && (
+                <button onClick={() => setMicState("idle")} style={styles.typeInsteadBtn}>
+                  Use mic instead
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -462,6 +509,7 @@ export default function BattleScreen({
       {/* Session complete overlay */}
       {sessionComplete && (
         <div style={styles.completeOverlay}>
+          <div style={styles.completeSpinner} />
           <div style={styles.completeText}>Analysing your performance...</div>
         </div>
       )}
@@ -475,80 +523,67 @@ const styles = {
   container: {
     display: "flex",
     flexDirection: "column",
-    height: "100vh",
-    backgroundColor: "#0f0f0f",
-    color: "#ffffff",
+    height: "100dvh",
+    color: "#f1f5f9",
     fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
     overflow: "hidden",
   },
   errorContainer: {
     padding: 32,
     textAlign: "center",
-    backgroundColor: "#0f0f0f",
-    minHeight: "100vh",
-    color: "#ffffff",
+    minHeight: "100dvh",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 16,
   },
-  errorText: { color: "#9ca3af", marginBottom: 16 },
-  backBtn: {
+  errorText: { color: "#94a3b8", fontSize: 15 },
+  linkBtn: {
     background: "none",
     border: "none",
-    color: "#9ca3af",
+    color: "#6366f1",
     fontSize: 14,
     cursor: "pointer",
-    padding: "8px 0",
+    textDecoration: "underline",
   },
   // Header
   header: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    padding: "12px 16px",
-    backgroundColor: "#0f0f0f",
-    borderBottom: "1px solid #1a1a1a",
+    padding: "14px 20px",
+    background: "rgba(6,8,24,0.8)",
+    backdropFilter: "blur(20px)",
+    WebkitBackdropFilter: "blur(20px)",
+    borderBottom: "1px solid rgba(255,255,255,0.08)",
     flexShrink: 0,
+    zIndex: 10,
   },
-  exitBtn: {
-    background: "none",
-    border: "none",
-    color: "#6b7280",
-    fontSize: 18,
-    cursor: "pointer",
-    padding: 4,
-  },
-  headerCenter: {
+  headerLeft: {
     display: "flex",
     alignItems: "center",
     gap: 10,
   },
-  opponentAvatarHeader: {
+  headerAvatar: {
     fontSize: 28,
   },
   headerName: {
     fontSize: 14,
     fontWeight: 700,
-    color: "#ffffff",
+    color: "#f1f5f9",
   },
   headerRole: {
     fontSize: 11,
-    color: "#6b7280",
+    color: "#64748b",
   },
   turnBadge: {
     fontSize: 12,
-    color: "#7c3aed",
-    backgroundColor: "rgba(124,58,237,0.12)",
-    padding: "4px 10px",
+    color: "#6366f1",
+    background: "rgba(99,102,241,0.12)",
+    padding: "4px 12px",
     borderRadius: 20,
-    fontWeight: 600,
-  },
-  // Filler banner
-  fillerBanner: {
-    backgroundColor: "rgba(245,158,11,0.12)",
-    border: "1px solid rgba(245,158,11,0.3)",
-    color: "#f59e0b",
-    fontSize: 12,
-    padding: "8px 16px",
-    textAlign: "center",
-    flexShrink: 0,
+    fontWeight: 700,
   },
   // Messages
   messagesContainer: {
@@ -559,214 +594,294 @@ const styles = {
     flexDirection: "column",
     gap: 12,
   },
-  bubbleRow: {
-    display: "flex",
-    alignItems: "flex-end",
-    gap: 8,
-  },
   opponentAvatarSmall: {
-    fontSize: 24,
+    fontSize: 22,
     flexShrink: 0,
     alignSelf: "flex-end",
-  },
-  bubble: {
-    padding: "10px 14px",
-    border: "1px solid #2a2a2a",
-  },
-  bubbleText: {
-    margin: 0,
-    fontSize: 14,
-    lineHeight: 1.6,
-    color: "#ffffff",
-  },
-  typingDots: {
-    display: "flex",
-    gap: 4,
-    padding: "2px 0",
+    lineHeight: 1,
   },
   dot: {
-    fontSize: 18,
-    color: "#6b7280",
+    fontSize: 20,
+    color: "#64748b",
     animationName: "blink",
     animationDuration: "1s",
     animationIterationCount: "infinite",
   },
-  // Input area
-  inputArea: {
+  // Mic panel
+  micPanel: {
     flexShrink: 0,
-    backgroundColor: "#0f0f0f",
-    borderTop: "1px solid #1a1a1a",
-    padding: "12px 16px 20px",
+    background: "rgba(6,8,24,0.85)",
+    backdropFilter: "blur(24px)",
+    WebkitBackdropFilter: "blur(24px)",
+    borderTop: "1px solid rgba(255,255,255,0.08)",
+    padding: "16px 20px 28px",
   },
   errorBanner: {
-    backgroundColor: "rgba(239,68,68,0.1)",
-    border: "1px solid rgba(239,68,68,0.3)",
-    borderRadius: 8,
+    background: "rgba(244,63,94,0.1)",
+    border: "1px solid rgba(244,63,94,0.3)",
+    borderRadius: 10,
     padding: "8px 12px",
-    color: "#ef4444",
+    color: "#f43f5e",
     fontSize: 13,
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 8,
+    marginBottom: 10,
   },
   errorDismiss: {
     background: "none",
     border: "none",
-    color: "#ef4444",
+    color: "#f43f5e",
     cursor: "pointer",
     fontSize: 14,
     padding: 0,
   },
-  // Live transcript
+  fillerPill: {
+    display: "inline-block",
+    background: "rgba(245,158,11,0.12)",
+    border: "1px solid rgba(245,158,11,0.3)",
+    color: "#f59e0b",
+    fontSize: 12,
+    fontWeight: 700,
+    padding: "3px 12px",
+    borderRadius: 20,
+    marginBottom: 10,
+  },
   liveTranscriptBox: {
-    backgroundColor: "#1a1a1a",
-    border: "1px solid #2a2a2a",
-    borderRadius: 10,
+    ...glassCard,
     padding: "10px 14px",
     marginBottom: 10,
   },
   liveLabel: {
     fontSize: 11,
-    color: "#ef4444",
+    color: "#f43f5e",
     fontWeight: 700,
     marginBottom: 4,
+    textTransform: "uppercase",
+    letterSpacing: "0.8px",
   },
   liveText: {
     margin: 0,
     fontSize: 14,
-    color: "#d1d5db",
+    color: "#cbd5e1",
     lineHeight: 1.5,
     fontStyle: "italic",
   },
   // Confirm
   confirmBox: {
-    backgroundColor: "#1a1a1a",
-    border: "1px solid #2a2a2a",
-    borderRadius: 10,
-    padding: "12px 14px",
-    marginBottom: 8,
+    ...glassCard,
+    padding: "14px 16px",
+    marginBottom: 10,
   },
   confirmLabel: {
-    fontSize: 12,
-    color: "#9ca3af",
+    fontSize: 11,
+    color: "#94a3b8",
     marginBottom: 6,
     fontWeight: 600,
+    textTransform: "uppercase",
+    letterSpacing: "0.8px",
   },
   confirmText: {
-    margin: "0 0 12px",
+    margin: "0 0 14px",
     fontSize: 14,
-    color: "#ffffff",
+    color: "#f1f5f9",
     lineHeight: 1.5,
   },
   confirmBtns: {
     display: "flex",
-    gap: 8,
+    gap: 10,
   },
   editBtn: {
     flex: 1,
-    padding: "10px",
-    backgroundColor: "#2a2a2a",
-    color: "#ffffff",
-    border: "1px solid #3a3a3a",
-    borderRadius: 8,
+    padding: "11px",
+    background: "rgba(255,255,255,0.06)",
+    color: "#f1f5f9",
+    border: "1px solid rgba(255,255,255,0.1)",
+    borderRadius: 10,
     fontSize: 13,
     fontWeight: 600,
     cursor: "pointer",
   },
   confirmBtn: {
     flex: 2,
-    padding: "10px",
-    backgroundColor: "#7c3aed",
+    padding: "11px",
+    background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
     color: "#ffffff",
     border: "none",
-    borderRadius: 8,
+    borderRadius: 10,
     fontSize: 13,
     fontWeight: 700,
     cursor: "pointer",
   },
   // Edit
   editBox: {
-    marginBottom: 8,
+    marginBottom: 10,
   },
   editLabel: {
-    fontSize: 12,
-    color: "#9ca3af",
+    fontSize: 11,
+    color: "#94a3b8",
     marginBottom: 6,
     fontWeight: 600,
+    textTransform: "uppercase",
+    letterSpacing: "0.8px",
   },
   editTextarea: {
     width: "100%",
-    backgroundColor: "#1a1a1a",
-    border: "1px solid #2a2a2a",
-    borderRadius: 8,
+    background: "rgba(255,255,255,0.05)",
+    border: "1px solid rgba(255,255,255,0.1)",
+    borderRadius: 10,
     padding: 12,
-    color: "#ffffff",
+    color: "#f1f5f9",
     fontSize: 14,
     lineHeight: 1.5,
     resize: "none",
     outline: "none",
     fontFamily: "inherit",
     boxSizing: "border-box",
-    marginBottom: 8,
+    marginBottom: 10,
   },
   // Sending
   sendingBox: {
-    textAlign: "center",
-    padding: 16,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    padding: "14px 0",
+  },
+  sendingSpinner: {
+    width: 18,
+    height: 18,
+    borderRadius: "50%",
+    border: "2px solid rgba(99,102,241,0.2)",
+    borderTopColor: "#6366f1",
+    animation: "spin 0.8s linear infinite",
   },
   sendingText: {
     fontSize: 14,
-    color: "#6b7280",
+    color: "#64748b",
     fontStyle: "italic",
   },
-  // Idle / mic
-  idleControls: {},
-  micArea: {
+  // Idle mic area
+  idleMicArea: {
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
     gap: 8,
+    paddingTop: 4,
   },
-  turnsLeftText: {
-    fontSize: 12,
-    color: "#6b7280",
+  micButtonWrapper: {
+    position: "relative",
+    width: 80,
+    height: 80,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  micButton: {
+    width: 80,
+    height: 80,
+    borderRadius: "50%",
+    background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+    border: "none",
+    fontSize: 28,
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    animation: "breathe 3s ease-in-out infinite",
+    boxShadow: "0 0 32px rgba(99,102,241,0.35)",
+    position: "relative",
+    zIndex: 1,
+  },
+  tapToSpeakLabel: {
+    fontSize: 13,
+    color: "#94a3b8",
+    fontWeight: 500,
     textAlign: "center",
   },
-  micBtn: {
-    width: "100%",
-    padding: "16px",
-    backgroundColor: "#7c3aed",
-    color: "#ffffff",
-    border: "none",
-    borderRadius: 14,
-    fontSize: 16,
-    fontWeight: 700,
-    cursor: "pointer",
-  },
-  typeInsteadArea: {},
   typeInsteadBtn: {
     background: "none",
     border: "none",
-    color: "#6b7280",
+    color: "#64748b",
     fontSize: 12,
     cursor: "pointer",
     textDecoration: "underline",
-    padding: "4px 0",
+    padding: "2px 0",
   },
-  // Text input
+  // Recording area
+  recordingArea: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 8,
+    paddingTop: 4,
+  },
+  recordingRingWrapper: {
+    position: "relative",
+    width: 80,
+    height: 80,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  recordingRingOuter: {
+    position: "absolute",
+    inset: -12,
+    borderRadius: "50%",
+    border: "2px solid rgba(244,63,94,0.5)",
+    animation: "pulse-ring 1.2s ease-out infinite",
+  },
+  recordingRingInnerOuter: {
+    position: "absolute",
+    inset: -6,
+    borderRadius: "50%",
+    border: "2px solid rgba(244,63,94,0.35)",
+    animation: "pulse-ring 1.2s ease-out infinite",
+    animationDelay: "0.5s",
+  },
+  recordingButton: {
+    width: 80,
+    height: 80,
+    borderRadius: "50%",
+    background: "linear-gradient(135deg, #f43f5e, #e11d48)",
+    border: "none",
+    fontSize: 28,
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    boxShadow: "0 0 32px rgba(244,63,94,0.4)",
+    position: "relative",
+    zIndex: 1,
+  },
+  recordingLabel: {
+    fontSize: 13,
+    color: "#f43f5e",
+    fontWeight: 600,
+    textAlign: "center",
+  },
+  // Text input fallback
   textInputArea: {
     display: "flex",
     flexDirection: "column",
     gap: 8,
   },
+  turnsLeftText: {
+    fontSize: 12,
+    color: "#64748b",
+  },
+  textInputRow: {
+    display: "flex",
+    gap: 8,
+    alignItems: "flex-end",
+  },
   textInputBox: {
-    width: "100%",
-    backgroundColor: "#1a1a1a",
-    border: "1px solid #2a2a2a",
-    borderRadius: 10,
+    flex: 1,
+    background: "rgba(255,255,255,0.05)",
+    border: "1px solid rgba(255,255,255,0.1)",
+    borderRadius: 12,
     padding: 12,
-    color: "#ffffff",
+    color: "#f1f5f9",
     fontSize: 14,
     lineHeight: 1.5,
     resize: "none",
@@ -775,37 +890,16 @@ const styles = {
     boxSizing: "border-box",
   },
   sendTextBtn: {
-    width: "100%",
-    padding: "12px",
-    backgroundColor: "#7c3aed",
+    width: 44,
+    height: 44,
+    background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
     color: "#ffffff",
     border: "none",
-    borderRadius: 10,
-    fontSize: 14,
+    borderRadius: 12,
+    fontSize: 20,
     fontWeight: 700,
     cursor: "pointer",
-  },
-  // Recording
-  recordingArea: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: "8px 0",
-  },
-  recordingPulse: {
-    fontSize: 14,
-    color: "#ef4444",
-    fontWeight: 700,
-  },
-  stopBtn: {
-    padding: "10px 20px",
-    backgroundColor: "#1a1a1a",
-    color: "#ef4444",
-    border: "1px solid #ef4444",
-    borderRadius: 10,
-    fontSize: 13,
-    fontWeight: 700,
-    cursor: "pointer",
+    flexShrink: 0,
   },
   // Complete overlay
   completeOverlay: {
@@ -813,14 +907,28 @@ const styles = {
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: "rgba(15,15,15,0.9)",
-    padding: 20,
+    background: "rgba(6,8,24,0.92)",
+    backdropFilter: "blur(12px)",
+    WebkitBackdropFilter: "blur(12px)",
+    padding: 24,
     textAlign: "center",
-    borderTop: "1px solid #2a2a2a",
+    borderTop: "1px solid rgba(255,255,255,0.08)",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 12,
+  },
+  completeSpinner: {
+    width: 28,
+    height: 28,
+    borderRadius: "50%",
+    border: "3px solid rgba(99,102,241,0.2)",
+    borderTopColor: "#6366f1",
+    animation: "spin 0.8s linear infinite",
   },
   completeText: {
     fontSize: 15,
-    color: "#7c3aed",
+    color: "#6366f1",
     fontWeight: 600,
   },
 };

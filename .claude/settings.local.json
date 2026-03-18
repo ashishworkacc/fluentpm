@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 \"/Users/ashish/Library/Application Support/Claude/local-agent-mode-sessions/skills-plugin/db9a1348-8f49-4458-a076-f06ed77c234e/c3d7bee2-f9ba-4bf5-8cd9-277d7e8d85cd/skills/docx/scripts/office/unpack.py\" \"/Users/ashish/Downloads/FluentPM-Complete-DevSpec.docx\" /tmp/spec_unpacked/)",
+      "Read(//private/tmp/**)",
+      "Bash(python3 -c \":*)",
+      "Bash(git --version)",
+      "Bash(git config:*)",
+      "Bash(gh --version)",
+      "Bash(gh auth:*)",
+      "Bash(npm --version)",
+      "Bash(git init:*)",
+      "Bash(git remote:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git branch:*)",
+      "Bash(git push:*)",
+      "Bash(npm create:*)",
+      "Bash(npx --yes create-vite@latest mytemp --template react)",
+      "Bash(npm install:*)",
+      "Bash(ls /Users/ashish/Documents/Claude_Projects/Verbal/.env*)",
+      "Bash(npm run:*)",
+      "Bash(node -e \":*)",
+      "Bash(pkill -f \"vite --port 5173\")",
+      "mcp__Claude_Preview__preview_start"
+    ]
+  }
+}
