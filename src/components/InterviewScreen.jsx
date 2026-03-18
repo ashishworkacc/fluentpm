@@ -154,6 +154,7 @@ export default function InterviewScreen({
   const hasInitialised = useRef(false);
   const liveTranscriptRef = useRef("");
   const pendingFeedbackRef = useRef(false);
+  const safetyTimerRef = useRef(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -360,7 +361,17 @@ export default function InterviewScreen({
           setInterviewFeedback({ ...interviewFeedback, fillerCounts });
         }
 
+        // Set BEFORE triggering speech to avoid race condition
         pendingFeedbackRef.current = true;
+
+        // Safety timeout — if speech never ends, force navigate after 30s
+        safetyTimerRef.current = setTimeout(() => {
+          if (pendingFeedbackRef.current) {
+            pendingFeedbackRef.current = false;
+            setCurrentScreen("interviewFeedback");
+          }
+        }, 30000);
+
         if (!cleanReply || voiceMuted) {
           setTimeout(() => setCurrentScreen("interviewFeedback"), 1500);
         }
@@ -408,6 +419,7 @@ export default function InterviewScreen({
               setIsSpeakingFace(false);
               if (pendingFeedbackRef.current) {
                 pendingFeedbackRef.current = false;
+                clearTimeout(safetyTimerRef.current);
                 setTimeout(() => setCurrentScreen("interviewFeedback"), 800);
               }
             }}

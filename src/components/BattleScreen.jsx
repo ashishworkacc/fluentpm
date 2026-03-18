@@ -10,12 +10,15 @@ const MAX_TURNS = 3;
 function cleanOpponentText(raw) {
   if (!raw) return "";
   return raw
-    .split("###FEEDBACK###")[0]   // strip feedback block
-    .replace(/\[.*?\]/g, "")       // remove [stage directions]
-    .replace(/\(.*?\)/g, "")       // remove (parenthetical notes)
-    .replace(/\*.*?\*/g, "")       // remove *action text*
-    .replace(/^(waiting for|system:|note:|instruction:).*/gim, "") // remove system leakage
-    .replace(/\n{3,}/g, "\n\n")    // collapse excessive newlines
+    .split("###FEEDBACK###")[0]
+    .split("###INTERVIEW_FEEDBACK###")[0]
+    .replace(/\[.*?\]/g, "")
+    .replace(/\*\*?\s*[A-Z][^*]*\*\*?:/g, "") // remove **Label:** prefixes
+    .replace(/^\s*(waiting for|system:|note:|instruction:|user:|assistant:|coach:).*/gim, "")
+    .replace(/^(Turn \d+:|Round \d+:)/gim, "")
+    .replace(/\(.*?\)/g, "")
+    .replace(/\*[^*]+\*/g, "")
+    .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
 
@@ -204,6 +207,7 @@ export default function BattleScreen({
   const hasInitialised = useRef(false);
   const liveTranscriptRef = useRef(""); // tracks transcript in callbacks (avoids stale closure)
   const pendingFeedbackRef = useRef(false);
+  const safetyTimerRef = useRef(null);
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -442,7 +446,17 @@ export default function BattleScreen({
         };
 
         setSessionData(sessionDataObj);
+        // Set BEFORE triggering speech to avoid race condition
         pendingFeedbackRef.current = true;
+
+        // Safety timeout — if speech never ends, force navigate after 30s
+        safetyTimerRef.current = setTimeout(() => {
+          if (pendingFeedbackRef.current) {
+            pendingFeedbackRef.current = false;
+            setCurrentScreen("feedback");
+          }
+        }, 30000);
+
         // If not speaking (muted or no reply), navigate after short delay
         if (!cleanReply || voiceMuted) {
           setTimeout(() => setCurrentScreen("feedback"), 1500);
@@ -490,6 +504,7 @@ export default function BattleScreen({
               setIsSpeakingFace(false);
               if (pendingFeedbackRef.current) {
                 pendingFeedbackRef.current = false;
+                clearTimeout(safetyTimerRef.current);
                 setTimeout(() => setCurrentScreen("feedback"), 800);
               }
             }}

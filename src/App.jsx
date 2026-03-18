@@ -13,6 +13,10 @@ import PhrasesScreen from "./components/PhrasesScreen.jsx";
 import InterviewHomeScreen from "./components/InterviewHomeScreen.jsx";
 import InterviewScreen from "./components/InterviewScreen.jsx";
 import InterviewFeedbackScreen from "./components/InterviewFeedbackScreen.jsx";
+import InterviewSelfAssessScreen from "./components/InterviewSelfAssessScreen.jsx";
+import StoryBankScreen from "./components/StoryBankScreen.jsx";
+import PushbackDrillScreen from "./components/PushbackDrillScreen.jsx";
+import QuickDrillScreen from "./components/QuickDrillScreen.jsx";
 
 // ── Sign-In Screen ───────────────────────────────────────────────────────────
 
@@ -70,7 +74,7 @@ const NAV_TABS = [
   { id: "interviewHome", label: "Interview", icon: "🎯" },
 ];
 
-const SCREENS_WITH_NO_NAV = ["preBattle", "battle", "feedback", "lightning", "interview", "interviewFeedback"];
+const SCREENS_WITH_NO_NAV = ["preBattle", "battle", "feedback", "lightning", "interview", "interviewFeedback", "interviewSelfAssess", "storyBank", "pushbackDrill", "quickDrill"];
 
 function BottomNav({ currentScreen, setCurrentScreen }) {
   if (SCREENS_WITH_NO_NAV.includes(currentScreen)) return null;
@@ -113,6 +117,8 @@ export default function App() {
   const [coachingProfile, setCoachingProfile] = useState(null);
   const [interviewData, setInterviewData] = useState(null);
   const [interviewFeedback, setInterviewFeedback] = useState(null);
+  const [interviewSelfScores, setInterviewSelfScores] = useState(null);
+  const [storyBank, setStoryBank] = useState([]);
 
   // Auth state listener
   useEffect(() => {
@@ -209,8 +215,24 @@ export default function App() {
           <InterviewScreen
             user={user}
             interviewData={interviewData}
-            setCurrentScreen={setCurrentScreen}
+            setCurrentScreen={(screen) => {
+              // intercept navigation to interviewFeedback and go through selfAssess first
+              if (screen === "interviewFeedback") {
+                setCurrentScreen("interviewSelfAssess");
+              } else {
+                setCurrentScreen(screen);
+              }
+            }}
             setInterviewFeedback={setInterviewFeedback}
+          />
+        );
+      case "interviewSelfAssess":
+        return (
+          <InterviewSelfAssessScreen
+            onSubmit={(selfScores) => {
+              setInterviewSelfScores(selfScores);
+              setCurrentScreen("interviewFeedback");
+            }}
           />
         );
       case "interviewFeedback":
@@ -219,6 +241,28 @@ export default function App() {
             user={user}
             interviewData={interviewData}
             interviewFeedback={interviewFeedback}
+            selfScores={interviewSelfScores}
+            setCurrentScreen={setCurrentScreen}
+          />
+        );
+      case "storyBank":
+        return (
+          <StoryBankScreen
+            user={user}
+            setCurrentScreen={setCurrentScreen}
+          />
+        );
+      case "pushbackDrill":
+        return (
+          <PushbackDrillScreen
+            user={user}
+            setCurrentScreen={setCurrentScreen}
+          />
+        );
+      case "quickDrill":
+        return (
+          <QuickDrillScreen
+            user={user}
             setCurrentScreen={setCurrentScreen}
           />
         );

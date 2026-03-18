@@ -47,6 +47,30 @@ function aggressionBadgeStyle(aggression) {
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
+const DRILL_CARDS = [
+  {
+    id: "storyBank",
+    title: "Story Bank",
+    desc: "Pre-build your STAR stories",
+    icon: "📖",
+    color: "#8b5cf6",
+  },
+  {
+    id: "pushbackDrill",
+    title: "Pushback Drill",
+    desc: "Answer + defend under 3 challenges",
+    icon: "🥊",
+    color: "#f43f5e",
+  },
+  {
+    id: "quickDrill",
+    title: "Quick Drill",
+    desc: "One question, 90 seconds",
+    icon: "⚡",
+    color: "#f59e0b",
+  },
+];
+
 export default function InterviewHomeScreen({ user, setCurrentScreen, setInterviewData }) {
   const [selectedType, setSelectedType] = useState(null);
   const [selectedInterviewer, setSelectedInterviewer] = useState(null);
@@ -207,6 +231,34 @@ export default function InterviewHomeScreen({ user, setCurrentScreen, setIntervi
             </div>
           );
         })}
+      </div>
+
+      {/* Drill Tools */}
+      <div style={styles.sectionLabel}>Drill tools</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 28 }}>
+        {DRILL_CARDS.map((card) => (
+          <div
+            key={card.id}
+            onClick={() => setCurrentScreen(card.id)}
+            style={{
+              ...glassCard,
+              padding: "14px 16px",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: 14,
+              border: `1px solid ${card.color}33`,
+              transition: "all 0.15s",
+            }}
+          >
+            <span style={{ fontSize: 26 }}>{card.icon}</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "#f1f5f9", marginBottom: 2 }}>{card.title}</div>
+              <div style={{ fontSize: 12, color: "#64748b" }}>{card.desc}</div>
+            </div>
+            <span style={{ color: card.color, fontSize: 16, fontWeight: 700 }}>→</span>
+          </div>
+        ))}
       </div>
 
       {/* Start Button */}

@@ -8,6 +8,19 @@ const glassCard = {
   borderRadius: 16,
 };
 
+// ── Root cause map ────────────────────────────────────────────────────────────
+
+const ROOT_CAUSES = {
+  WE_FRAMING: { label: "We-framing", desc: "Hiding behind 'we' — the interviewer can't see your individual contribution", color: "#f59e0b" },
+  CONFLICT_AVOIDANCE: { label: "Conflict avoidance", desc: "Removing all tension from your story — no stakes, no drama, nothing memorable", color: "#f43f5e" },
+  STATUS_ANXIETY: { label: "Overclaiming", desc: "Making the story too perfect — experienced interviewers recognise this and discount it", color: "#f43f5e" },
+  NARRATIVE_OVERLOAD: { label: "Too much detail", desc: "Collapsing under the weight of your own story — the point gets buried", color: "#f59e0b" },
+  GENERIC_SAFETY: { label: "Safe and generic", desc: "Giving the answer anyone could give — nothing that marks this as unmistakably you", color: "#f59e0b" },
+  DIRECTNESS_GAP: { label: "Indirect communication", desc: "Burying the headline — the answer is there, but it takes too long to find it", color: "#f59e0b" },
+  STRUCTURE_COLLAPSE: { label: "No structure", desc: "Stream of consciousness — the interviewer is doing the work to find your point", color: "#f43f5e" },
+  METRIC_AVOIDANCE: { label: "No numbers", desc: "Claims without evidence — impact without scale is easy to ignore", color: "#f59e0b" },
+};
+
 // ── Verdict config ────────────────────────────────────────────────────────────
 
 function getVerdictConfig(verdict) {
@@ -49,6 +62,7 @@ export default function InterviewFeedbackScreen({
   user,
   interviewData,
   interviewFeedback,
+  selfScores,
   setCurrentScreen,
 }) {
   if (!interviewFeedback || !interviewData) {
@@ -81,7 +95,22 @@ export default function InterviewFeedbackScreen({
     improve1 = "",
     improve2 = "",
     improve3 = "",
+    innerMonologue = [],
+    rootCause = "",
+    rootCauseExplanation = "",
+    rootCauseFix = "",
   } = interviewFeedback;
+
+  const rootCauseInfo = ROOT_CAUSES[rootCause] || null;
+
+  // Dimension comparison data
+  const dimensions = [
+    { label: "Product Sense", aiScore: productSense, selfScore: selfScores?.productSense, color: "#6366f1" },
+    { label: "Analytical", aiScore: analytical, selfScore: selfScores?.analytical, color: "#06b6d4" },
+    { label: "Execution", aiScore: execution, selfScore: selfScores?.execution, color: "#8b5cf6" },
+    { label: "Communication", aiScore: communication, selfScore: selfScores?.communication, color: "#10b981" },
+    { label: "Leadership", aiScore: leadership, selfScore: selfScores?.leadership, color: "#f59e0b" },
+  ];
 
   const verdictConfig = getVerdictConfig(verdict);
 
@@ -127,11 +156,44 @@ export default function InterviewFeedbackScreen({
       {/* 5-Dimension Scores */}
       <div style={{ ...glassCard, padding: "20px 22px", marginBottom: 16 }}>
         <div style={styles.sectionTitle}>Performance Breakdown</div>
-        <ScoreBar label="Product Sense" score={productSense} color="#6366f1" />
-        <ScoreBar label="Analytical Thinking" score={analytical} color="#06b6d4" />
-        <ScoreBar label="Execution" score={execution} color="#8b5cf6" />
-        <ScoreBar label="Communication" score={communication} color="#10b981" />
-        <ScoreBar label="Leadership" score={leadership} color="#f59e0b" />
+        {selfScores ? (
+          // Side-by-side comparison when self scores are available
+          <div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 16, marginBottom: 8 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.5px" }}>You</span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#6366f1", textTransform: "uppercase", letterSpacing: "0.5px" }}>AI</span>
+            </div>
+            {dimensions.map(({ label, aiScore, selfScore, color }) => {
+              const gap = selfScore - aiScore;
+              const gapColor = gap >= 2 ? "#f43f5e" : gap === 1 ? "#f59e0b" : gap <= -1 ? "#10b981" : "#64748b";
+              const gapLabel = gap > 0 ? `+${gap}` : gap < 0 ? `${gap}` : "=";
+              return (
+                <div key={label} style={{ marginBottom: 14 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: "#94a3b8" }}>{label}</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontSize: 12, color: "#94a3b8" }}>{selfScore}/5</span>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: gapColor, minWidth: 22, textAlign: "center" }}>{gapLabel}</span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color }}>{aiScore}/5</span>
+                    </div>
+                  </div>
+                  <div style={{ height: 6, background: "rgba(255,255,255,0.08)", borderRadius: 3, overflow: "hidden", position: "relative" }}>
+                    <div style={{ height: "100%", width: `${Math.round((aiScore / 5) * 100)}%`, background: color, borderRadius: 3, transition: "width 0.6s ease" }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          // Simple bars when no self scores
+          <>
+            <ScoreBar label="Product Sense" score={productSense} color="#6366f1" />
+            <ScoreBar label="Analytical Thinking" score={analytical} color="#06b6d4" />
+            <ScoreBar label="Execution" score={execution} color="#8b5cf6" />
+            <ScoreBar label="Communication" score={communication} color="#10b981" />
+            <ScoreBar label="Leadership" score={leadership} color="#f59e0b" />
+          </>
+        )}
       </div>
 
       {/* Where you lost the interviewer */}
@@ -219,6 +281,100 @@ export default function InterviewFeedbackScreen({
               <div style={{ fontSize: 14, color: "#94a3b8", lineHeight: 1.6, paddingTop: 3 }}>{item}</div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Inner Monologue */}
+      {innerMonologue && innerMonologue.some(Boolean) && (
+        <div style={{ ...glassCard, padding: "20px 22px", marginBottom: 16 }}>
+          <div style={styles.sectionTitle}>What I Was Thinking</div>
+          <div style={{ fontSize: 12, color: "#64748b", marginBottom: 16 }}>— {interviewer?.name || "The interviewer"}'s inner monologue</div>
+          {innerMonologue.map((thought, i) => {
+            if (!thought) return null;
+            const isPositive = /exactly|strong|impressed|great|excellent|good/.test(thought.toLowerCase());
+            const isNegative = /losing|weak|vague|not specific|unclear|confused|worried|concerned/.test(thought.toLowerCase());
+            const bg = isPositive ? "rgba(16,185,129,0.06)" : isNegative ? "rgba(244,63,94,0.06)" : "rgba(255,255,255,0.03)";
+            const borderColor = isPositive ? "rgba(16,185,129,0.2)" : isNegative ? "rgba(244,63,94,0.15)" : "rgba(255,255,255,0.06)";
+            const labelColor = isPositive ? "#10b981" : isNegative ? "#f43f5e" : "#64748b";
+            return (
+              <div key={i} style={{ display: "flex", gap: 12, marginBottom: i < 4 ? 12 : 0 }}>
+                <div style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: "50%",
+                  background: bg,
+                  border: `1px solid ${borderColor}`,
+                  color: labelColor,
+                  fontSize: 11,
+                  fontWeight: 700,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                  marginTop: 2,
+                }}>
+                  T{i + 1}
+                </div>
+                <div style={{
+                  flex: 1,
+                  background: bg,
+                  border: `1px solid ${borderColor}`,
+                  borderRadius: 10,
+                  padding: "10px 12px",
+                }}>
+                  <div style={{ fontSize: 13, color: "#94a3b8", lineHeight: 1.6, fontStyle: "italic" }}>{thought}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Root Cause */}
+      {rootCauseInfo && (
+        <div style={{
+          ...glassCard,
+          padding: "20px 22px",
+          marginBottom: 24,
+          background: "rgba(245,158,11,0.04)",
+          border: "1px solid rgba(245,158,11,0.2)",
+        }}>
+          <div style={styles.sectionTitle}>Why This Happened</div>
+          <div style={{ marginBottom: 12 }}>
+            <span style={{
+              display: "inline-block",
+              fontSize: 12,
+              fontWeight: 700,
+              padding: "4px 12px",
+              borderRadius: 20,
+              background: "rgba(245,158,11,0.15)",
+              color: "#f59e0b",
+              marginBottom: 8,
+            }}>
+              {rootCauseInfo.label}
+            </span>
+            <div style={{ fontSize: 14, color: "#94a3b8", lineHeight: 1.6, marginBottom: 12 }}>
+              {rootCauseInfo.desc}
+            </div>
+            {rootCauseExplanation && (
+              <div style={{ fontSize: 13, color: "#cbd5e1", lineHeight: 1.6, marginBottom: 10, fontStyle: "italic" }}>
+                "{rootCauseExplanation}"
+              </div>
+            )}
+            {rootCauseFix && (
+              <div style={{
+                background: "rgba(99,102,241,0.08)",
+                border: "1px solid rgba(99,102,241,0.2)",
+                borderRadius: 10,
+                padding: "10px 14px",
+              }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#818cf8", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                  Fix it
+                </div>
+                <div style={{ fontSize: 13, color: "#a5b4fc", lineHeight: 1.6 }}>{rootCauseFix}</div>
+              </div>
+            )}
+          </div>
         </div>
       )}
 

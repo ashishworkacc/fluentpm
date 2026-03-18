@@ -61,6 +61,19 @@ ${LANGUAGE_REGISTER_RULES}
 
 IMPORTANT: Do not inflate scores. An average professional speaking under pressure scores 5-6. Reserve 8+ for responses that would genuinely impress a senior executive.
 
+SCORING ANCHORS — apply strictly:
+- 4: Rambling, no structure, basic vocabulary, multiple filler phrases, no evidence
+- 5: Some structure but vague, safe phrases only, no concrete examples or numbers
+- 6: Decent structure, one concrete point, some professional vocabulary
+- 7: Clear structure, specific examples, professional vocabulary, direct communication
+- 8: Strong structure, quantified points, confident delivery, natural professional English
+- 9: Exceptional — would genuinely impress a senior exec, crisp and memorable
+- 10: Flawless — rare, reserve for truly exceptional responses
+
+Default assumption: most real answers from someone learning English professionally land at 5-6.
+Never give 7+ unless you can quote a specific strong phrase from what the user said.
+Never give 8+ to a response that contains vague phrases like "we need to look into this" or "it's complicated".
+
 STRICT SCORING RUBRIC — apply this exactly:
 SCORE is an integer from 4 to 10. Most responses should score 4–6. 7 requires genuine quality. 8+ is rare.
 
@@ -456,6 +469,17 @@ TURN STRUCTURE:
 
 ${LANGUAGE_REGISTER_RULES}
 
+DIMENSION SCORING ANCHORS (1-5 scale — apply strictly):
+- 1: Very weak — clear gap, would not pass screening
+- 2: Below average — some effort but major gaps
+- 3: Average — meets baseline but nothing memorable
+- 4: Strong — above expectations, clear competency
+- 5: Exceptional — rare, reserve for truly standout moments
+
+Default assumption: most candidates score 2-3 per dimension.
+Never give 4+ unless you can cite a specific phrase or moment from the candidate.
+Never give 5 unless the response would genuinely impress a senior executive at that company.
+
 ###INTERVIEW_FEEDBACK### FORMAT — output EXACTLY after Turn 5 reply:
 
 ###INTERVIEW_FEEDBACK###
@@ -472,7 +496,22 @@ SAMPLE_STRONG_ANSWER: [How a top candidate would have answered the core question
 IMPROVE_1: [most important skill/area to develop — one sentence]
 IMPROVE_2: [second area — one sentence]
 IMPROVE_3: [third area — one sentence]
-###END_INTERVIEW###`;
+INNER_MONOLOGUE_T1: [1-2 sentences of what the interviewer was thinking after the user's FIRST response — quote a specific phrase they used and react to it as an internal thought]
+INNER_MONOLOGUE_T2: [same for SECOND response]
+INNER_MONOLOGUE_T3: [same for THIRD response]
+INNER_MONOLOGUE_T4: [same for FOURTH response]
+INNER_MONOLOGUE_T5: [same for FIFTH response — this is the lasting impression]
+ROOT_CAUSE: [pick ONE from this list: WE_FRAMING | CONFLICT_AVOIDANCE | STATUS_ANXIETY | NARRATIVE_OVERLOAD | GENERIC_SAFETY | DIRECTNESS_GAP | STRUCTURE_COLLAPSE | METRIC_AVOIDANCE | none]
+ROOT_CAUSE_EXPLANATION: [one sentence explaining how this pattern appeared in the user's specific response]
+ROOT_CAUSE_FIX: [one specific action they can take to fix this pattern — not generic advice]
+###END_INTERVIEW###
+
+INNER_MONOLOGUE RULES:
+- Write in first person as the interviewer ("When they said X, I thought...")
+- Quote or paraphrase a real phrase the user said
+- Be honest — if it was weak, say "I was losing confidence here"
+- If it was strong, say "This is exactly what I wanted to hear"
+- Keep each to 1-2 sentences. Specific beats generic.`;
 }
 
 // ── Interview Feedback Parser ────────────────────────────────────────────────
@@ -498,6 +537,16 @@ export function parseInterviewFeedback(text) {
     improve1: extract("IMPROVE_1"),
     improve2: extract("IMPROVE_2"),
     improve3: extract("IMPROVE_3"),
+    innerMonologue: [
+      extract("INNER_MONOLOGUE_T1"),
+      extract("INNER_MONOLOGUE_T2"),
+      extract("INNER_MONOLOGUE_T3"),
+      extract("INNER_MONOLOGUE_T4"),
+      extract("INNER_MONOLOGUE_T5"),
+    ],
+    rootCause: extract("ROOT_CAUSE"),
+    rootCauseExplanation: extract("ROOT_CAUSE_EXPLANATION"),
+    rootCauseFix: extract("ROOT_CAUSE_FIX"),
   };
 }
 

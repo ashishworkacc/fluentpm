@@ -281,31 +281,34 @@ export default function TalkingFace({ opponentId, opponent, isSpeaking, text, on
       }
       clearAllTimers();
 
-      // Schedule timing-based mouth animation — works for both muted and unmuted
-      const words = text.split(/\s+/).filter(Boolean);
-      const rate = VOICE_PROFILES[opponentId]?.rate || 1.0;
-      let elapsed = 0;
-      words.forEach((word) => {
-        const wordDuration = Math.max(180, (word.length * 60 + 100) / rate);
-        const openAt = elapsed;
-        const closeAt = elapsed + Math.min(wordDuration * 0.65, 280);
-        timersRef.current.push(
-          setTimeout(() => setMouthOpenAmount(0.6 + Math.random() * 0.4), openAt)
-        );
-        timersRef.current.push(
-          setTimeout(() => setMouthOpenAmount(0), closeAt)
-        );
-        elapsed += wordDuration;
-      });
+      // rAF-based mouth animation — runs continuously while speaking
+      function animateMouth() {
+        if (!isSpeakingRef.current) {
+          setMouthOpenAmount(0);
+          return;
+        }
+        const t = Date.now();
+        const cycle = 300; // ms per open-close cycle
+        const phase = (t % cycle) / cycle;
+        if (phase < 0.6) {
+          setMouthOpenAmount(0.5 + Math.sin((phase * Math.PI) / 0.6) * 0.5);
+        } else {
+          setMouthOpenAmount(0);
+        }
+        timersRef.current.push(setTimeout(animateMouth, 40)); // ~25fps
+      }
 
       if (muted) {
-        // No audio — fire onSpeechEnd after estimated duration
+        // No audio — fire onSpeechEnd after estimated duration based on word count
+        const words = text.split(/\s+/).filter(Boolean);
+        const elapsed = (words.length / 130) * 60 * 1000; // 130 wpm
+        animateMouth();
         timersRef.current.push(
           setTimeout(() => {
             if (isSpeakingRef.current) {
               clearAllTimers();
-              setMouthOpenAmount(0);
               isSpeakingRef.current = false;
+              setMouthOpenAmount(0);
               onSpeechEnd?.();
             }
           }, elapsed + 200)
@@ -318,21 +321,20 @@ export default function TalkingFace({ opponentId, opponent, isSpeaking, text, on
           }
         };
       } else {
-        // Real speech synthesis — timing already drives animation; onboundary enhances
+        // Real speech synthesis
+        animateMouth();
         speechRef.current = speakOpponentLine(
           text,
           opponentId,
           ({ word }) => {
-            // Reinforce — mouth already animating from timing, this enhances sync
+            // onboundary — reset phase for snappier sync
             setMouthOpenAmount(0.8 + Math.random() * 0.2);
-            clearTimeout(closeTimerRef.current);
-            closeTimerRef.current = setTimeout(() => setMouthOpenAmount(0), 160);
           },
           () => {
             // Speech ended
             clearAllTimers();
-            setMouthOpenAmount(0);
             isSpeakingRef.current = false;
+            setMouthOpenAmount(0);
             onSpeechEnd?.();
           }
         );

@@ -94,8 +94,10 @@ export function speakOpponentLine(text, opponentId, onWordBoundary, onEnd) {
   // Cancel any ongoing speech first
   window.speechSynthesis.cancel();
 
+  const cleanText = text.replace(/[#*`]/g, "").replace(/\s+/g, " ").trim();
+
   const profile = VOICE_PROFILES[opponentId] || { pitch: 1.0, rate: 1.0, name: "default" };
-  const utterance = new SpeechSynthesisUtterance(text);
+  const utterance = new SpeechSynthesisUtterance(cleanText);
   utterance.pitch = profile.pitch;
   utterance.rate = profile.rate;
   utterance.volume = 1.0;
@@ -105,7 +107,7 @@ export function speakOpponentLine(text, opponentId, onWordBoundary, onEnd) {
 
   utterance.onboundary = (event) => {
     if (event.name === "word") {
-      const word = text.slice(event.charIndex, event.charIndex + event.charLength);
+      const word = cleanText.slice(event.charIndex, event.charIndex + event.charLength);
       onWordBoundary?.({ charIndex: event.charIndex, charLength: event.charLength, word });
     }
   };
