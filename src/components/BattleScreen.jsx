@@ -125,6 +125,7 @@ export default function BattleScreen({
   const recognitionRef = useRef(null);
   const messagesEndRef = useRef(null);
   const hasInitialised = useRef(false);
+  const liveTranscriptRef = useRef(""); // tracks transcript in callbacks (avoids stale closure)
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -183,11 +184,13 @@ export default function BattleScreen({
   function handleMicClick() {
     if (micState !== "idle") return;
 
+    liveTranscriptRef.current = "";
     setLiveTranscript("");
     setMicState("recording");
 
     recognitionRef.current = startRecognition(
       (transcript, isFinal) => {
+        liveTranscriptRef.current = transcript;
         setLiveTranscript(transcript);
         const analysis = analyseTranscript(transcript);
         setFillerCounts(analysis.fillerCounts);
@@ -200,18 +203,30 @@ export default function BattleScreen({
           setTopFillerCount(0);
         }
         if (isFinal) {
-          setMicState("confirming");
           setConfirmedTranscript(transcript);
+          setMicState("confirming");
         }
       },
       () => {
-        setMicState(prev => (prev === "recording" ? "confirming" : prev));
+        // onEnd fires when browser stops listening
+        // Only go to confirming if we actually captured something
+        if (liveTranscriptRef.current.trim()) {
+          setConfirmedTranscript(liveTranscriptRef.current);
+          setMicState("confirming");
+        } else {
+          // Nothing captured — browser likely doesn't support mic or permission was denied
+          // Auto-switch to text input with a clear message
+          setMicSupported(false);
+          setMicState("nomic");
+          setError("Voice not captured. Type your response below — this browser may not support the microphone.");
+        }
       }
     );
 
-    if (!recognitionRef.current.supported) {
+    if (recognitionRef.current && !recognitionRef.current.supported) {
       setMicSupported(false);
       setMicState("nomic");
+      setError("Microphone not supported in this browser. Type your response below.");
     }
   }
 
@@ -432,23 +447,24 @@ export default function BattleScreen({
             </div>
           )}
 
-          {/* Idle — mic button */}
+          {/* Idle — mic button + text toggle */}
           {micState === "idle" && !isOpponentTyping && messages.length > 0 && (
             <div style={styles.idleMicArea}>
-              <div style={styles.micButtonWrapper}>
-                <button
-                  onClick={handleMicClick}
-                  style={styles.micButton}
-                >
-                  🎤
+              <div style={styles.idleRow}>
+                <div style={styles.micButtonWrapper}>
+                  <button onClick={handleMicClick} style={styles.micButton}>
+                    🎤
+                  </button>
+                </div>
+                <div style={styles.idleDivider}>or</div>
+                <button onClick={() => setMicState("nomic")} style={styles.typeToggleBtn}>
+                  <span style={{ fontSize: 22 }}>⌨️</span>
+                  <span style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>Type</span>
                 </button>
               </div>
               <div style={styles.tapToSpeakLabel}>
-                Tap to speak · {turnsLeft} turn{turnsLeft !== 1 ? "s" : ""} left
+                {turnsLeft} turn{turnsLeft !== 1 ? "s" : ""} left
               </div>
-              <button onClick={() => setMicState("nomic")} style={styles.typeInsteadBtn}>
-                Type instead
-              </button>
             </div>
           )}
 
@@ -469,38 +485,42 @@ export default function BattleScreen({
           {/* No mic / text input */}
           {micState === "nomic" && !isOpponentTyping && messages.length > 0 && (
             <div style={styles.textInputArea}>
-              <div style={styles.turnsLeftText}>
-                {turnsLeft > 0 ? `${turnsLeft} turn${turnsLeft !== 1 ? "s" : ""} left` : "Last turn"}
+              <div style={styles.textInputHeader}>
+                <span style={styles.turnsLeftText}>
+                  {turnsLeft} turn{turnsLeft !== 1 ? "s" : ""} left
+                </span>
+                {micSupported && (
+                  <button onClick={() => { setError(null); setMicState("idle"); }} style={styles.useMicBtn}>
+                    🎤 Use mic
+                  </button>
+                )}
               </div>
               <div style={styles.textInputRow}>
                 <textarea
                   value={textInput}
                   onChange={e => setTextInput(e.target.value)}
-                  placeholder="Type your response..."
+                  placeholder="Type your response here... (Ctrl+Enter to send)"
                   rows={3}
                   style={styles.textInputBox}
+                  autoFocus
                   onKeyDown={e => {
                     if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
                       handleTextSubmit();
                     }
                   }}
                 />
-                <button
-                  onClick={handleTextSubmit}
-                  disabled={!textInput.trim()}
-                  style={{
-                    ...styles.sendTextBtn,
-                    opacity: textInput.trim() ? 1 : 0.4,
-                  }}
-                >
-                  →
-                </button>
               </div>
-              {micSupported && (
-                <button onClick={() => setMicState("idle")} style={styles.typeInsteadBtn}>
-                  Use mic instead
-                </button>
-              )}
+              <button
+                onClick={handleTextSubmit}
+                disabled={!textInput.trim()}
+                style={{
+                  ...styles.sendTextFullBtn,
+                  opacity: textInput.trim() ? 1 : 0.4,
+                  cursor: textInput.trim() ? "pointer" : "default",
+                }}
+              >
+                Send →
+              </button>
             </div>
           )}
         </div>
@@ -766,8 +786,32 @@ const styles = {
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
-    gap: 8,
+    gap: 10,
     paddingTop: 4,
+  },
+  idleRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 16,
+  },
+  idleDivider: {
+    fontSize: 12,
+    color: "#475569",
+    fontWeight: 500,
+  },
+  typeToggleBtn: {
+    width: 64,
+    height: 64,
+    borderRadius: "50%",
+    background: "rgba(255,255,255,0.06)",
+    border: "1px solid rgba(255,255,255,0.1)",
+    cursor: "pointer",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 2,
+    color: "#94a3b8",
   },
   micButtonWrapper: {
     position: "relative",
@@ -798,15 +842,6 @@ const styles = {
     color: "#94a3b8",
     fontWeight: 500,
     textAlign: "center",
-  },
-  typeInsteadBtn: {
-    background: "none",
-    border: "none",
-    color: "#64748b",
-    fontSize: 12,
-    cursor: "pointer",
-    textDecoration: "underline",
-    padding: "2px 0",
   },
   // Recording area
   recordingArea: {
@@ -864,11 +899,26 @@ const styles = {
   textInputArea: {
     display: "flex",
     flexDirection: "column",
-    gap: 8,
+    gap: 10,
+  },
+  textInputHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
   turnsLeftText: {
     fontSize: 12,
     color: "#64748b",
+  },
+  useMicBtn: {
+    background: "rgba(99,102,241,0.12)",
+    border: "1px solid rgba(99,102,241,0.25)",
+    borderRadius: 20,
+    color: "#818cf8",
+    fontSize: 12,
+    fontWeight: 600,
+    padding: "4px 12px",
+    cursor: "pointer",
   },
   textInputRow: {
     display: "flex",
@@ -878,28 +928,28 @@ const styles = {
   textInputBox: {
     flex: 1,
     background: "rgba(255,255,255,0.05)",
-    border: "1px solid rgba(255,255,255,0.1)",
+    border: "1px solid rgba(255,255,255,0.12)",
     borderRadius: 12,
-    padding: 12,
+    padding: "12px 14px",
     color: "#f1f5f9",
     fontSize: 14,
-    lineHeight: 1.5,
+    lineHeight: 1.6,
     resize: "none",
     outline: "none",
     fontFamily: "inherit",
     boxSizing: "border-box",
+    width: "100%",
   },
-  sendTextBtn: {
-    width: 44,
-    height: 44,
+  sendTextFullBtn: {
+    width: "100%",
+    padding: "13px",
     background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
     color: "#ffffff",
     border: "none",
     borderRadius: 12,
-    fontSize: 20,
+    fontSize: 15,
     fontWeight: 700,
-    cursor: "pointer",
-    flexShrink: 0,
+    boxSizing: "border-box",
   },
   // Complete overlay
   completeOverlay: {
