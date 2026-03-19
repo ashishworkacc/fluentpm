@@ -10,7 +10,7 @@ import { PHRASE_CATEGORIES } from "../data/phrases.js";
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const TOTAL_ROUNDS = 3;
-const RESPOND_SECONDS = 30;
+const RESPOND_SECONDS = 60;
 const INTRO_SECONDS = 3;
 const SCENARIO_SECONDS = 2;
 
@@ -107,6 +107,7 @@ export default function LightningRoundScreen({ user, setCurrentScreen }) {
 
   // Round results
   const [roundResults, setRoundResults] = useState([]);
+  const roundResultsRef = useRef([]);
   const [currentRoundScore, setCurrentRoundScore] = useState(null);
   const [isScoring, setIsScoring] = useState(false);
 
@@ -280,13 +281,17 @@ export default function LightningRoundScreen({ user, setCurrentScreen }) {
         scenario: currentScenario?.text || "",
         transcript: text,
         score: result?.score || 1,
-        usedExpression: result?.usedExpression || false,
+        scoreLabel: result?.scoreLabel || "",
         feedback: result?.feedback || "",
         betterVersion: result?.betterVersion || "",
       };
 
       setCurrentRoundScore(roundResult);
-      setRoundResults(prev => [...prev, roundResult]);
+      setRoundResults(prev => {
+        const updated = [...prev, roundResult];
+        roundResultsRef.current = updated;
+        return updated;
+      });
     } catch (err) {
       console.error("Lightning score error:", err);
       const fallback = {
@@ -295,12 +300,16 @@ export default function LightningRoundScreen({ user, setCurrentScreen }) {
         scenario: currentScenario?.text || "",
         transcript: text,
         score: 1,
-        usedExpression: false,
+        scoreLabel: "",
         feedback: "Could not score this round. Please try again.",
         betterVersion: "",
       };
       setCurrentRoundScore(fallback);
-      setRoundResults(prev => [...prev, fallback]);
+      setRoundResults(prev => {
+        const updated = [...prev, fallback];
+        roundResultsRef.current = updated;
+        return updated;
+      });
     } finally {
       setIsScoring(false);
     }
@@ -324,16 +333,16 @@ export default function LightningRoundScreen({ user, setCurrentScreen }) {
   }
 
   async function finishSession() {
-    const allScores = roundResults.map(r => r.score);
+    const results = roundResultsRef.current;
+    const allScores = results.map(r => r.score);
     const avgScore = allScores.length
       ? Math.round((allScores.reduce((a, b) => a + b, 0) / allScores.length) * 10) / 10
       : 0;
     const xp = Math.round(10 + (avgScore / 5) * 10);
-    const worstRound = [...roundResults].sort((a, b) => a.score - b.score)[0];
 
     try {
       await addDoc(collection(db, "users", user.uid, "lightningSessions"), {
-        rounds: roundResults,
+        rounds: results,
         avgScore,
         xp,
         savedAt: new Date().toISOString(),
@@ -350,12 +359,13 @@ export default function LightningRoundScreen({ user, setCurrentScreen }) {
 
   // Summary screen
   if (phase === "summary") {
-    const allScores = roundResults.map(r => r.score);
+    const results = roundResultsRef.current.length > 0 ? roundResultsRef.current : roundResults;
+    const allScores = results.map(r => r.score);
     const avgScore = allScores.length
       ? Math.round((allScores.reduce((a, b) => a + b, 0) / allScores.length) * 10) / 10
       : 0;
     const xp = Math.round(10 + (avgScore / 5) * 10);
-    const worstRound = [...roundResults].sort((a, b) => a.score - b.score)[0];
+    const worstRound = [...results].sort((a, b) => a.score - b.score)[0];
 
     return (
       <div style={styles.container}>
@@ -394,7 +404,7 @@ export default function LightningRoundScreen({ user, setCurrentScreen }) {
         )}
 
         <div style={{ marginBottom: 16 }}>
-          {roundResults.map((r, i) => (
+          {results.map((r, i) => (
             <div key={i} style={{ ...glassCard, padding: "12px 14px", marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div style={{ fontSize: 13, color: "#94a3b8" }}>Round {i + 1}</div>
               <div style={{
@@ -486,6 +496,12 @@ export default function LightningRoundScreen({ user, setCurrentScreen }) {
       {/* RESPONDING phase */}
       {phase === "responding" && (
         <div style={styles.phaseContent}>
+          {/* Scenario reminder — sticky */}
+          <div style={{ ...glassCard, padding: "14px 16px", marginBottom: 10, background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.2)", position: "sticky", top: 60, zIndex: 9 }}>
+            <div style={{ fontSize: 10, color: "#f59e0b", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: 6 }}>Scenario</div>
+            <div style={{ fontSize: 14, color: "#f1f5f9", lineHeight: 1.5 }}>{currentScenario?.text}</div>
+          </div>
+
           {/* Expression reminder */}
           <div style={{ ...glassCard, padding: "12px 16px", marginBottom: 16, textAlign: "center" }}>
             <div style={{ fontSize: 11, color: "#06b6d4", fontWeight: 700, marginBottom: 4 }}>Use this:</div>
@@ -585,32 +601,20 @@ export default function LightningRoundScreen({ user, setCurrentScreen }) {
             </div>
           ) : currentRoundScore ? (
             <div>
+              {/* Score */}
               <div style={{ textAlign: "center", marginBottom: 20 }}>
-                {/* Expression used */}
-                <div style={{ marginBottom: 16 }}>
-                  <span style={{
-                    fontSize: 14,
-                    fontWeight: 700,
-                    padding: "6px 16px",
-                    borderRadius: 20,
-                    background: currentRoundScore.usedExpression ? "rgba(16,185,129,0.12)" : "rgba(244,63,94,0.12)",
-                    color: currentRoundScore.usedExpression ? "#10b981" : "#f43f5e",
-                  }}>
-                    {currentRoundScore.usedExpression ? "✓ Expression used" : "✗ Expression not used"}
-                  </span>
-                </div>
-
-                {/* Score */}
                 <div style={{
-                  fontSize: 64,
-                  fontWeight: 900,
+                  fontSize: 64, fontWeight: 900,
                   color: getScoreColor(currentRoundScore.score),
-                  letterSpacing: "-3px",
-                  lineHeight: 1,
-                  marginBottom: 8,
+                  letterSpacing: "-3px", lineHeight: 1, marginBottom: 8,
                 }}>
                   {currentRoundScore.score}/5
                 </div>
+                {currentRoundScore.scoreLabel && (
+                  <div style={{ fontSize: 15, fontWeight: 700, color: getScoreColor(currentRoundScore.score) }}>
+                    {currentRoundScore.scoreLabel}
+                  </div>
+                )}
               </div>
 
               {/* Feedback */}

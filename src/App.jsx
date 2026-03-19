@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useGlobalHighlight } from "./hooks/useGlobalHighlight.js";
 import { onAuthStateChanged, signInWithPopup, signOut } from "firebase/auth";
 import { auth, googleProvider } from "./lib/firebase.js";
 
@@ -71,7 +72,6 @@ const NAV_TABS = [
   { id: "home",          label: "Practice"  },
   { id: "lexicon",       label: "Lexicon"   },
   { id: "progress",      label: "Progress"  },
-  { id: "phrases",       label: "Phrases"   },
   { id: "interviewHome", label: "Interview", icon: "🎯" },
 ];
 
@@ -121,6 +121,24 @@ export default function App() {
   const [interviewSelfScores, setInterviewSelfScores] = useState(null);
   const [storyBank, setStoryBank] = useState([]);
   const [customQuestion, setCustomQuestion] = useState(null);
+
+  // Global highlight-to-lexicon
+  const { selection: globalSelection, saving: globalSaving, saved: globalSaved, handleSave: handleGlobalSave } = useGlobalHighlight(async (text) => {
+    if (!user) return;
+    const { enrichExpression } = await import("./lib/openrouter.js");
+    const { collection: col, addDoc: add, serverTimestamp: sts } = await import("firebase/firestore");
+    const { db: database } = await import("./lib/firebase.js");
+    const enriched = await enrichExpression(text);
+    await add(col(database, "users", user.uid, "lexicon"), {
+      expression: text,
+      enriched: enriched || null,
+      source: "highlight",
+      status: "new",
+      usedInBattles: 0,
+      savedAt: sts(),
+      lastUsedDate: null,
+    });
+  });
 
   // Auth state listener
   useEffect(() => {
@@ -325,6 +343,53 @@ export default function App() {
       </main>
 
       <BottomNav currentScreen={currentScreen} setCurrentScreen={setCurrentScreen} />
+
+      {/* Global highlight-to-lexicon */}
+      {globalSelection.text && globalSelection.pos && !globalSaving && !globalSaved && (
+        <button
+          data-lexicon-btn="true"
+          onMouseDown={(e) => { e.preventDefault(); handleGlobalSave(); }}
+          style={{
+            position: "fixed",
+            left: Math.min(globalSelection.pos.x - 70, window.innerWidth - 160),
+            top: Math.max(globalSelection.pos.y - 48, 8),
+            zIndex: 99999,
+            background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+            color: "#fff",
+            border: "none",
+            borderRadius: 20,
+            padding: "7px 14px",
+            fontSize: 12,
+            fontWeight: 700,
+            cursor: "pointer",
+            boxShadow: "0 4px 20px rgba(99,102,241,0.5)",
+            whiteSpace: "nowrap",
+            pointerEvents: "all",
+          }}
+        >
+          Save to Lexicon
+        </button>
+      )}
+      {globalSaved && (
+        <div style={{
+          position: "fixed", bottom: 80, left: "50%", transform: "translateX(-50%)",
+          background: "#10b981", color: "#fff", borderRadius: 20,
+          padding: "8px 18px", fontSize: 13, fontWeight: 700, zIndex: 99999,
+          pointerEvents: "none",
+        }}>
+          Saved to Lexicon
+        </div>
+      )}
+      {globalSaving && (
+        <div style={{
+          position: "fixed", bottom: 80, left: "50%", transform: "translateX(-50%)",
+          background: "rgba(15,16,40,0.95)", border: "1px solid rgba(99,102,241,0.3)",
+          color: "#a5b4fc", borderRadius: 20, padding: "8px 18px",
+          fontSize: 13, fontWeight: 700, zIndex: 99999, pointerEvents: "none",
+        }}>
+          Saving...
+        </div>
+      )}
     </div>
   );
 }

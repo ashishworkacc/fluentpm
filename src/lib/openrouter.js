@@ -361,39 +361,30 @@ export async function enrichExpression(expression) {
 // ── Lightning Round ──────────────────────────────────────────────────────────
 
 export function buildLightningPrompt(targetExpression, variantToUse, variantText, scenario) {
-  return `You are a language coach running a lightning round speaking drill for a Product Manager.
+  return `You are a communication coach evaluating a 60-second spoken response by a Product Manager.
 
-TARGET EXPRESSION: "${targetExpression}"
-VARIANT TO USE: ${variantToUse} — "${variantText}"
 SCENARIO: "${scenario}"
-
-The user will try to use the target expression or its variant naturally in a short spoken response to the scenario above.
+TARGET EXPRESSION (bonus if used naturally): "${targetExpression}"
 
 ${LANGUAGE_REGISTER_RULES}
 
-Score the user's response and return EXACTLY this JSON (no markdown, no extra text):
+Score the response on OVERALL COMMUNICATION QUALITY. The expression is a bonus — do not penalise for not using it.
+
+Score 1–5:
+1 = Very weak — no structure, heavy fillers, unclear
+2 = Below average — some attempt but vague or disorganised
+3 = Average — gets the point across but generic language
+4 = Strong — clear, structured, professional vocabulary
+5 = Exceptional — crisp, confident, natural fluency
+
+Return ONLY valid JSON:
 {
   "score": 1-5,
+  "scoreLabel": "Very Weak | Below Average | Average | Strong | Exceptional",
   "usedExpression": true or false,
-  "usedNaturally": true or false,
-  "feedback": "one sentence of specific, actionable feedback",
-  "betterVersion": "a model sentence showing how to use the expression ideally in this scenario — empty string if score >= 4",
-  "naturalnessFlagsCount": 0,
-  "naturalnessFlagsDetails": [
-    {
-      "phrase": "phrase from user's transcript",
-      "category": "Indian English | Bookish | Corporate Jargon",
-      "alternative": "natural alternative"
-    }
-  ]
-}
-
-Score guide:
-1 = Did not attempt the expression at all
-2 = Attempted but awkward or forced
-3 = Used it but context or delivery was weak
-4 = Used it naturally and it fit the scenario well
-5 = Perfect — natural, relevant, confident`;
+  "feedback": "one specific sentence of actionable coaching feedback",
+  "betterVersion": "rewrite their 1-2 key sentences more powerfully — or empty string if score >= 4"
+}`;
 }
 
 /**
@@ -474,6 +465,15 @@ INTERVIEW CONDUCT RULES:
 - After EXACTLY 5 user turns, output the ###INTERVIEW_FEEDBACK### block.
 - Do NOT give hints. Do NOT soften the interview unrealistically.
 - A real PM interview is uncomfortable — replicate that.
+
+TOUGHNESS RULES — apply strictly:
+- If the candidate says "we" more than twice, push back: "I want to understand YOUR specific contribution. What did you personally do?"
+- If the answer lacks any metrics or numbers, ask: "Can you put a number on that impact?"
+- If the answer is under 2 sentences, push: "That's quite brief. Can you walk me through more of the detail?"
+- If the claim seems too perfect, probe: "What went wrong in that process?"
+- Never accept the first answer without at least one follow-up probe.
+- Challenge assumptions: "What if that assumption doesn't hold? What's your fallback?"
+- Push for decisions: "If you had to choose one approach right now, what would it be?"
 
 TURN STRUCTURE:
 - Turn 1: Your opener (already set to the question). Just be the interviewer.

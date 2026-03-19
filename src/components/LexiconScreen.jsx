@@ -10,6 +10,7 @@ import {
 } from "firebase/firestore";
 import { db } from "../lib/firebase.js";
 import { enrichExpression } from "../lib/openrouter.js";
+import { PHRASE_CATEGORIES } from "../data/phrases.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -458,6 +459,7 @@ function ExpressionCard({ item, onMarkMastered }) {
 export default function LexiconScreen({ user, setCurrentScreen }) {
   const [items, setItems] = useState([]);
   const [activeTab, setActiveTab] = useState(0);
+  const [sectionTab, setSectionTab] = useState("my_lexicon");
   const [showCapture, setShowCapture] = useState(false);
   const [bgEnrichProgress, setBgEnrichProgress] = useState(null);
   const bgEnrichRef = useRef(false);
@@ -546,6 +548,31 @@ export default function LexiconScreen({ user, setCurrentScreen }) {
     setItems(prev => prev.map(it => it.id === itemId ? { ...it, status: "mastered" } : it));
   }
 
+  async function addPhraseToLexicon(phraseText) {
+    if (items.some(l => l.expression === phraseText)) return;
+    try {
+      const ref = await addDoc(collection(db, "users", user.uid, "lexicon"), {
+        expression: phraseText,
+        enriched: null,
+        source: "phrase_library",
+        status: "pending_enrichment",
+        usedInBattles: 0,
+        savedAt: new Date().toISOString(),
+        lastUsedDate: null,
+      });
+      await fetchLexicon();
+      // Enrich in background
+      enrichExpression(phraseText).then(enriched => {
+        if (enriched) {
+          updateDoc(doc(db, "users", user.uid, "lexicon", ref.id), { enriched, status: "new" })
+            .catch(() => {});
+        }
+      }).catch(() => {});
+    } catch (err) {
+      console.error("Add phrase error:", err);
+    }
+  }
+
   // Tab filtering
   let filteredItems = [];
   if (activeTab === 0) {
@@ -573,8 +600,27 @@ export default function LexiconScreen({ user, setCurrentScreen }) {
         </div>
       </div>
 
-      {/* Background enrichment progress bar */}
-      {bgEnrichProgress && (
+      {/* Section tab switcher */}
+      <div style={{ display: "flex", background: "rgba(255,255,255,0.04)", borderRadius: 12, padding: 3, marginBottom: 20 }}>
+        {["my_lexicon", "phrase_library"].map(tab => (
+          <button
+            key={tab}
+            onClick={() => setSectionTab(tab)}
+            style={{
+              flex: 1, padding: "9px 12px",
+              background: sectionTab === tab ? "rgba(99,102,241,0.3)" : "transparent",
+              border: sectionTab === tab ? "1px solid rgba(99,102,241,0.4)" : "1px solid transparent",
+              borderRadius: 10, color: sectionTab === tab ? "#a5b4fc" : "#64748b",
+              fontSize: 13, fontWeight: 700, cursor: "pointer", transition: "all 0.15s",
+            }}
+          >
+            {tab === "my_lexicon" ? "My Lexicon" : "Phrase Library"}
+          </button>
+        ))}
+      </div>
+
+      {/* Background enrichment progress bar (My Lexicon only) */}
+      {sectionTab === "my_lexicon" && bgEnrichProgress && (
         <div style={{
           background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.15)",
           borderRadius: 12, padding: "10px 14px", marginBottom: 14,
@@ -596,57 +642,107 @@ export default function LexiconScreen({ user, setCurrentScreen }) {
         </div>
       )}
 
-      {/* Tabs */}
-      <div style={styles.tabRow}>
-        {TAB_LABELS.map((label, i) => (
-          <button
-            key={i}
-            onClick={() => setActiveTab(i)}
-            style={{
-              ...styles.tabBtn,
-              background: activeTab === i ? "rgba(99,102,241,0.15)" : "transparent",
-              color: activeTab === i ? "#818cf8" : "#64748b",
-              borderBottom: activeTab === i ? "2px solid #6366f1" : "2px solid transparent",
-            }}
-          >
-            {label}
-            {i === 1 && (() => {
-              const dueCount = items.filter(it => it.status !== "mastered" && isOverdue(it)).length;
-              return dueCount > 0 ? (
-                <span style={{
-                  marginLeft: 6, fontSize: 10, fontWeight: 700,
-                  background: "rgba(244,63,94,0.15)", color: "#f43f5e",
-                  padding: "1px 6px", borderRadius: 20,
-                }}>
-                  {dueCount}
-                </span>
-              ) : null;
-            })()}
-          </button>
-        ))}
-      </div>
-
-      {/* Expression list */}
-      {filteredItems.length === 0 ? (
-        <div style={styles.emptyState}>
-          <div style={{ fontSize: 36, marginBottom: 12 }}>📚</div>
-          <div style={{ fontSize: 15, color: "#94a3b8", fontWeight: 600 }}>
-            {activeTab === 0
-              ? "No expressions saved yet"
-              : activeTab === 1
-                ? "Nothing due for practice"
-                : "No mastered expressions yet"}
-          </div>
-          {activeTab === 0 && (
-            <div style={{ fontSize: 13, color: "#475569", marginTop: 6 }}>
-              Tap + to add your first expression.
-            </div>
-          )}
+      {/* Filter tabs (My Lexicon only) */}
+      {sectionTab === "my_lexicon" && (
+        <div style={styles.tabRow}>
+          {TAB_LABELS.map((label, i) => (
+            <button
+              key={i}
+              onClick={() => setActiveTab(i)}
+              style={{
+                ...styles.tabBtn,
+                background: activeTab === i ? "rgba(99,102,241,0.15)" : "transparent",
+                color: activeTab === i ? "#818cf8" : "#64748b",
+                borderBottom: activeTab === i ? "2px solid #6366f1" : "2px solid transparent",
+              }}
+            >
+              {label}
+              {i === 1 && (() => {
+                const dueCount = items.filter(it => it.status !== "mastered" && isOverdue(it)).length;
+                return dueCount > 0 ? (
+                  <span style={{
+                    marginLeft: 6, fontSize: 10, fontWeight: 700,
+                    background: "rgba(244,63,94,0.15)", color: "#f43f5e",
+                    padding: "1px 6px", borderRadius: 20,
+                  }}>
+                    {dueCount}
+                  </span>
+                ) : null;
+              })()}
+            </button>
+          ))}
         </div>
-      ) : (
-        filteredItems.map(item => (
-          <ExpressionCard key={item.id} item={item} onMarkMastered={handleMarkMastered} />
-        ))
+      )}
+
+      {/* My Lexicon content */}
+      {sectionTab === "my_lexicon" && (
+        <>
+          {filteredItems.length === 0 ? (
+            <div style={styles.emptyState}>
+              <div style={{ fontSize: 36, marginBottom: 12 }}>📚</div>
+              <div style={{ fontSize: 15, color: "#94a3b8", fontWeight: 600 }}>
+                {activeTab === 0
+                  ? "No expressions saved yet"
+                  : activeTab === 1
+                    ? "Nothing due for practice"
+                    : "No mastered expressions yet"}
+              </div>
+              {activeTab === 0 && (
+                <div style={{ fontSize: 13, color: "#475569", marginTop: 6 }}>
+                  Tap + to add your first expression.
+                </div>
+              )}
+            </div>
+          ) : (
+            filteredItems.map(item => (
+              <ExpressionCard key={item.id} item={item} onMarkMastered={handleMarkMastered} />
+            ))
+          )}
+        </>
+      )}
+
+      {/* Phrase Library content */}
+      {sectionTab === "phrase_library" && (
+        <div>
+          {Object.entries(PHRASE_CATEGORIES).map(([key, cat]) => (
+            <div key={key} style={{ marginBottom: 20 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#818cf8", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                {cat.label}
+              </div>
+              {cat.phrases.map((phrase, i) => {
+                const alreadySaved = items.some(l => l.expression === phrase.text);
+                return (
+                  <div key={i} style={{
+                    ...glassCard, padding: "12px 14px", marginBottom: 8,
+                    display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+                  }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: "#f1f5f9", marginBottom: 4 }}>
+                        "{phrase.text}"
+                      </div>
+                      {phrase.situationNote && (
+                        <div style={{ fontSize: 12, color: "#64748b", lineHeight: 1.4 }}>{phrase.situationNote}</div>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => addPhraseToLexicon(phrase.text)}
+                      disabled={alreadySaved}
+                      style={{
+                        background: alreadySaved ? "rgba(16,185,129,0.1)" : "rgba(99,102,241,0.15)",
+                        border: alreadySaved ? "1px solid rgba(16,185,129,0.3)" : "1px solid rgba(99,102,241,0.3)",
+                        borderRadius: 8, padding: "5px 12px", fontSize: 12,
+                        color: alreadySaved ? "#10b981" : "#a5b4fc",
+                        cursor: alreadySaved ? "default" : "pointer", flexShrink: 0, fontWeight: 600,
+                      }}
+                    >
+                      {alreadySaved ? "Saved" : "+ Add"}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
       )}
 
       {/* Capture modal */}

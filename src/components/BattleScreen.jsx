@@ -177,6 +177,7 @@ export default function BattleScreen({
   const [editTranscript, setEditTranscript] = useState("");
   const [isEditing, setIsEditing] = useState(false);
   const [sessionComplete, setSessionComplete] = useState(false);
+  const [forceEnding, setForceEnding] = useState(false);
   const [error, setError] = useState(null);
 
   // Real-time filler analysis on live transcript
@@ -502,6 +503,66 @@ export default function BattleScreen({
     }
   }
 
+  // ── Force end ─────────────────────────────────────────────────────────────
+
+  async function handleForceEnd() {
+    if (forceEnding || sessionComplete) return;
+    setForceEnding(true);
+
+    const apiMessages = messages.map(m => ({
+      role: m.role === "opponent" ? "assistant" : "user",
+      content: m.text,
+    }));
+    apiMessages.push({
+      role: "user",
+      content: "[User ended session early. Please give a brief closing remark and generate the ###FEEDBACK### block now.]"
+    });
+
+    setMicState("sending");
+    setIsOpponentTyping(true);
+    try {
+      const { reply, feedbackBlock } = await sendBattleMessage(
+        apiMessages, opponent, scenario, {}, coachingProfile
+      );
+      const cleanReply = cleanOpponentText(reply);
+      if (cleanReply) {
+        setMessages(prev => [...prev, { role: "opponent", text: cleanReply }]);
+      }
+      const fb = feedbackBlock || { score: 6, xp: 20, highlight: "Session ended early.", tip: "Try completing full sessions for deeper feedback.", weakPhrases: [], powerPhrases: [], structureScore: 3, structureTip: "", structureReplayShow: false };
+      setSessionComplete(true);
+      setIsFinalizingFeedback(true);
+      const sessionDataObj = {
+        ...fb,
+        opponentId: opponent.id,
+        opponentName: opponent.name,
+        scenarioId: scenario.id,
+        scenarioText: scenario.text,
+        situationType: scenario.situationType,
+        fillerCounts,
+        transcript: messages.filter(m => m.role === "user").map(m => m.text).join(" "),
+        date: new Date().toISOString().slice(0, 10),
+        timestamp: new Date().toISOString(),
+        uid: user.uid,
+      };
+      setSessionData(sessionDataObj);
+      pendingFeedbackRef.current = true;
+      safetyTimerRef.current = setTimeout(() => {
+        pendingFeedbackRef.current = false;
+        setCurrentScreen("feedback");
+      }, 5000);
+      setTimeout(() => setShowSkipBtn(true), 1500);
+      if (!cleanReply || voiceMuted) {
+        setTimeout(() => setCurrentScreen("feedback"), 800);
+      }
+    } catch (err) {
+      console.error("Force end error:", err);
+      setForceEnding(false);
+      setMicState("idle");
+    } finally {
+      setIsOpponentTyping(false);
+    }
+  }
+
   // ── Render ───────────────────────────────────────────────────────────────
 
   if (!opponent || !scenario) {
@@ -739,6 +800,20 @@ export default function BattleScreen({
               <div style={styles.tapToSpeakLabel}>
                 {turnsLeft} turn{turnsLeft !== 1 ? "s" : ""} left
               </div>
+              {currentTurn >= 1 && !forceEnding && (
+                <div style={{ textAlign: "center", marginTop: 8 }}>
+                  <button
+                    onClick={handleForceEnd}
+                    style={{
+                      background: "none", border: "none", color: "#475569",
+                      fontSize: 12, cursor: "pointer", textDecoration: "underline",
+                      textDecorationStyle: "dashed", padding: "4px 0",
+                    }}
+                  >
+                    End session & get feedback →
+                  </button>
+                </div>
+              )}
             </div>
           )}
 

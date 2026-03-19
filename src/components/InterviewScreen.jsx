@@ -129,6 +129,7 @@ export default function InterviewScreen({
   const [editTranscript, setEditTranscript] = useState("");
   const [isEditing, setIsEditing] = useState(false);
   const [sessionComplete, setSessionComplete] = useState(false);
+  const [forceEnding, setForceEnding] = useState(false);
   const [error, setError] = useState(null);
   const [micSupported, setMicSupported] = useState(true);
   const [textInput, setTextInput] = useState("");
@@ -196,6 +197,19 @@ export default function InterviewScreen({
         setMessages([{ role: "opponent", text: cleanReply }]);
         setCurrentSpeechText(cleanReply);
         setIsSpeakingFace(true);
+
+        // Save question to custom question bank for future reference
+        if (user?.uid && question?.text) {
+          addDoc(collection(db, "users", user.uid, "customQuestions"), {
+            text: question.text,
+            type: questionType || "behavioral",
+            source: "interview_session",
+            company: question.company || "",
+            addedAt: new Date().toISOString(),
+            attempts: 0,
+            bestScore: null,
+          }).catch(() => {}); // fire-and-forget
+        }
       } catch (err) {
         console.error("Interview opener error:", err);
         const fallback = `Hi, I'm ${interviewer.name}. Let's get started. ${question.text}`;
@@ -340,50 +354,46 @@ export default function InterviewScreen({
       if (interviewFeedback) {
         setSessionComplete(true);
 
-        // Save to Firestore
-        try {
-          const sessionDoc = {
-            ...interviewFeedback,
-            interviewerId: interviewer.id,
-            interviewerName: interviewer.name,
-            questionType,
-            questionText: question.text,
-            questionId: question.id,
-            company: question.company,
-            transcript: updatedMessages
-              .filter(m => m.role === "user")
-              .map(m => m.text)
-              .join(" "),
-            date: new Date().toISOString().slice(0, 10),
-            timestamp: new Date().toISOString(),
-            uid: user.uid,
-          };
-          await addDoc(collection(db, "users", user.uid, "interviewSessions"), {
-            ...sessionDoc,
-            savedAt: serverTimestamp(),
-          });
-          setInterviewFeedback({ ...sessionDoc, fillerCounts });
-        } catch (err) {
-          console.error("Failed to save interview session:", err);
-          setInterviewFeedback({ ...interviewFeedback, fillerCounts });
-        }
+        const sessionDoc = {
+          ...interviewFeedback,
+          interviewerId: interviewer.id,
+          interviewerName: interviewer.name,
+          questionType,
+          questionText: question.text,
+          questionId: question.id,
+          company: question.company,
+          transcript: updatedMessages
+            .filter(m => m.role === "user")
+            .map(m => m.text)
+            .join(" "),
+          date: new Date().toISOString().slice(0, 10),
+          timestamp: new Date().toISOString(),
+          uid: user.uid,
+        };
+        setInterviewFeedback({ ...sessionDoc, fillerCounts }); // SET FIRST
 
-        // Set BEFORE triggering speech to avoid race condition
+        // Save to Firestore in background (non-blocking)
+        addDoc(collection(db, "users", user.uid, "interviewSessions"), {
+          ...sessionDoc,
+          savedAt: serverTimestamp(),
+        }).catch(err => console.error("Failed to save interview session:", err));
+
+        // Navigate after speech ends
         pendingFeedbackRef.current = true;
 
-        // Safety timeout — if speech never ends, force navigate after 8s
+        // Safety timeout — if speech never ends, force navigate after 5s
         safetyTimerRef.current = setTimeout(() => {
           if (pendingFeedbackRef.current) {
             pendingFeedbackRef.current = false;
             setCurrentScreen("interviewFeedback");
           }
-        }, 8000);
+        }, 5000);
 
-        // Show skip button after 3s in case speech doesn't start
-        setTimeout(() => setShowSkipBtn(true), 3000);
+        // Show skip button after 2s in case speech doesn't start
+        setTimeout(() => setShowSkipBtn(true), 2000);
 
         if (!cleanReply || voiceMuted) {
-          setTimeout(() => setCurrentScreen("interviewFeedback"), 1500);
+          setTimeout(() => setCurrentScreen("interviewFeedback"), 1000);
         }
       } else {
         setMicState("idle");
@@ -391,6 +401,73 @@ export default function InterviewScreen({
     } catch (err) {
       console.error("Interview message error:", err);
       setError("Something went wrong. Please try again.");
+      setMicState("idle");
+    } finally {
+      setIsTyping(false);
+    }
+  }
+
+  // ── Force end ───────────────────────────────────────────────────────────────
+
+  async function handleForceEnd() {
+    if (forceEnding || sessionComplete) return;
+    setForceEnding(true);
+
+    const apiMessages = messages.map(m => ({
+      role: m.role === "opponent" ? "assistant" : "user",
+      content: m.text,
+    }));
+    apiMessages.push({
+      role: "user",
+      content: "[Candidate ended the interview early. Please give a brief closing remark and generate the ###INTERVIEW_FEEDBACK### block now.]"
+    });
+
+    setMicState("sending");
+    setIsTyping(true);
+    try {
+      const { reply, interviewFeedback: fb } = await sendInterviewMessage(
+        apiMessages, interviewer, question, questionType
+      );
+      const cleanReply = cleanInterviewerText(reply);
+      if (cleanReply) {
+        setMessages(prev => [...prev, { role: "opponent", text: cleanReply }]);
+      }
+      const feedbackData = fb || {
+        productSense: 3, analytical: 3, execution: 3, communication: 3, leadership: 3,
+        verdict: "No Hire", verdictReason: "Session ended early — not enough data to evaluate.",
+        strongestMoment: "", lostInterviewerAt: "Session ended early.",
+        sampleStrongAnswer: "", improve1: "Complete full sessions for better evaluation.",
+        improve2: "", improve3: "", innerMonologue: ["","","","",""], rootCause: "none",
+        rootCauseExplanation: "", rootCauseFix: "",
+      };
+
+      const sessionDoc = {
+        ...feedbackData,
+        interviewerId: interviewer.id,
+        interviewerName: interviewer.name,
+        questionType,
+        questionText: question.text,
+        questionId: question.id,
+        transcript: messages.filter(m => m.role === "user").map(m => m.text).join(" "),
+        date: new Date().toISOString().slice(0, 10),
+        uid: user.uid,
+      };
+      setInterviewFeedback({ ...sessionDoc, fillerCounts });
+      setSessionComplete(true);
+      addDoc(collection(db, "users", user.uid, "interviewSessions"), { ...sessionDoc, savedAt: serverTimestamp() }).catch(() => {});
+
+      pendingFeedbackRef.current = true;
+      safetyTimerRef.current = setTimeout(() => {
+        pendingFeedbackRef.current = false;
+        setCurrentScreen("interviewFeedback");
+      }, 5000);
+      setTimeout(() => setShowSkipBtn(true), 1500);
+      if (!cleanReply || voiceMuted) {
+        setTimeout(() => setCurrentScreen("interviewFeedback"), 800);
+      }
+    } catch (err) {
+      console.error("Force end error:", err);
+      setForceEnding(false);
       setMicState("idle");
     } finally {
       setIsTyping(false);
@@ -576,6 +653,20 @@ export default function InterviewScreen({
               <div style={{ fontSize: 13, color: "#94a3b8", fontWeight: 500, textAlign: "center" }}>
                 {turnsLeft} turn{turnsLeft !== 1 ? "s" : ""} left
               </div>
+              {currentTurn >= 2 && !forceEnding && (
+                <div style={{ textAlign: "center", marginTop: 8 }}>
+                  <button
+                    onClick={handleForceEnd}
+                    style={{
+                      background: "none", border: "none", color: "#475569",
+                      fontSize: 12, cursor: "pointer", textDecoration: "underline",
+                      textDecorationStyle: "dashed", padding: "4px 0",
+                    }}
+                  >
+                    End interview & get feedback →
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
