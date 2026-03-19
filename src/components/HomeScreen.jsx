@@ -556,7 +556,7 @@ export default function HomeScreen({ user, setCurrentScreen, setPreBattleData, s
 
 const styles = {
   container: {
-    maxWidth: 640,
+    maxWidth: 900,
     margin: "0 auto",
     padding: "24px 20px 24px",
     minHeight: "100%",

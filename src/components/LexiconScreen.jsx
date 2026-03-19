@@ -771,7 +771,7 @@ export default function LexiconScreen({ user, setCurrentScreen }) {
 
 const styles = {
   container: {
-    maxWidth: 680,
+    maxWidth: 900,
     margin: "0 auto",
     padding: "24px 20px",
     paddingTop: 80,

@@ -21,7 +21,19 @@ import QuickDrillScreen from "./components/QuickDrillScreen.jsx";
 import CustomQuestionsScreen from "./components/CustomQuestionsScreen.jsx";
 import ProfileScreen from "./components/ProfileScreen.jsx";
 
-// ── Sign-In Screen ───────────────────────────────────────────────────────────
+// ── Window width hook ─────────────────────────────────────────────────────────
+
+function useWindowWidth() {
+  const [width, setWidth] = useState(window.innerWidth);
+  useEffect(() => {
+    const handler = () => setWidth(window.innerWidth);
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
+  }, []);
+  return width;
+}
+
+// ── Sign-In Screen ────────────────────────────────────────────────────────────
 
 function SignInScreen({ onSignIn, loading }) {
   return (
@@ -53,7 +65,7 @@ function SignInScreen({ onSignIn, loading }) {
   );
 }
 
-// ── Loading Screen ───────────────────────────────────────────────────────────
+// ── Loading Screen ────────────────────────────────────────────────────────────
 
 function LoadingScreen() {
   return (
@@ -67,21 +79,145 @@ function LoadingScreen() {
   );
 }
 
-// ── Bottom Nav ───────────────────────────────────────────────────────────────
+// ── Nav config ────────────────────────────────────────────────────────────────
 
 const NAV_TABS = [
-  { id: "home",          label: "Practice"  },
-  { id: "lexicon",       label: "Lexicon"   },
-  { id: "progress",      label: "Progress"  },
-  { id: "profile",       label: "Profile"   },
-  { id: "interviewHome", label: "Interview" },
+  { id: "home",          label: "Practice",  icon: "🏠" },
+  { id: "lexicon",       label: "Lexicon",   icon: "📖" },
+  { id: "progress",      label: "Progress",  icon: "📊" },
+  { id: "profile",       label: "Profile",   icon: "👤" },
+  { id: "interviewHome", label: "Interview", icon: "🎤" },
 ];
 
-const SCREENS_WITH_NO_NAV = ["preBattle", "battle", "feedback", "lightning", "interview", "interviewFeedback", "interviewSelfAssess", "storyBank", "pushbackDrill", "quickDrill", "customQuestions"];
+const SCREENS_WITH_NO_NAV = [
+  "preBattle", "battle", "feedback", "lightning",
+  "interview", "interviewFeedback", "interviewSelfAssess",
+  "storyBank", "pushbackDrill", "quickDrill", "customQuestions",
+];
+
+const SIDEBAR_WIDTH = 240;
+
+// ── Desktop Sidebar ───────────────────────────────────────────────────────────
+
+function Sidebar({ currentScreen, setCurrentScreen, user, onSignOut }) {
+  return (
+    <aside style={{
+      position: "fixed",
+      left: 0, top: 0, bottom: 0,
+      width: SIDEBAR_WIDTH,
+      background: "rgba(5,6,20,0.98)",
+      borderRight: "1px solid rgba(255,255,255,0.07)",
+      display: "flex",
+      flexDirection: "column",
+      zIndex: 200,
+    }}>
+      {/* Logo */}
+      <div style={{ padding: "28px 22px 22px", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{
+            width: 34, height: 34, borderRadius: 10,
+            background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+            display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+          }}>
+            <svg width="18" height="18" viewBox="0 0 40 40" fill="none">
+              <path d="M13 28L20 12L27 28" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M15.5 23H24.5" stroke="#fff" strokeWidth="3" strokeLinecap="round"/>
+            </svg>
+          </div>
+          <div>
+            <div style={{ fontSize: 17, fontWeight: 800, color: "#f1f5f9", letterSpacing: "-0.3px", lineHeight: 1 }}>
+              FluentPM
+            </div>
+            <div style={{ fontSize: 10, color: "#475569", fontWeight: 500, marginTop: 2 }}>
+              Fluency Coach
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Nav items */}
+      <nav style={{ flex: 1, padding: "14px 12px", display: "flex", flexDirection: "column", gap: 2, overflowY: "auto" }}>
+        {NAV_TABS.map(tab => {
+          const active = currentScreen === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setCurrentScreen(tab.id)}
+              style={{
+                width: "100%",
+                padding: "11px 14px",
+                borderRadius: 10,
+                background: active ? "rgba(99,102,241,0.14)" : "transparent",
+                border: active ? "1px solid rgba(99,102,241,0.22)" : "1px solid transparent",
+                color: active ? "#a5b4fc" : "#64748b",
+                textAlign: "left",
+                cursor: "pointer",
+                fontSize: 14,
+                fontWeight: active ? 700 : 500,
+                display: "flex",
+                alignItems: "center",
+                gap: 11,
+                transition: "all 0.15s",
+              }}
+              onMouseEnter={e => { if (!active) { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.color = "#94a3b8"; } }}
+              onMouseLeave={e => { if (!active) { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#64748b"; } }}
+            >
+              <span style={{ fontSize: 17, lineHeight: 1, flexShrink: 0 }}>{tab.icon}</span>
+              <span>{tab.label}</span>
+            </button>
+          );
+        })}
+      </nav>
+
+      {/* User footer */}
+      <div style={{ padding: "12px", borderTop: "1px solid rgba(255,255,255,0.05)" }}>
+        <div style={{
+          display: "flex", alignItems: "center", gap: 10,
+          padding: "10px 10px", borderRadius: 10,
+          background: "rgba(255,255,255,0.03)",
+        }}>
+          {user.photoURL ? (
+            <img
+              src={user.photoURL}
+              alt={user.displayName}
+              style={{ width: 32, height: 32, borderRadius: "50%", flexShrink: 0, border: "2px solid rgba(99,102,241,0.3)" }}
+              referrerPolicy="no-referrer"
+            />
+          ) : (
+            <div style={{
+              width: 32, height: 32, borderRadius: "50%",
+              background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 13, fontWeight: 700, color: "#fff", flexShrink: 0,
+            }}>
+              {(user.displayName || user.email || "U")[0].toUpperCase()}
+            </div>
+          )}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: "#e2e8f0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {user.displayName?.split(" ")[0] || "User"}
+            </div>
+            <div style={{ fontSize: 10, color: "#475569", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {user.email}
+            </div>
+          </div>
+          <button
+            onClick={onSignOut}
+            title="Sign out"
+            style={{ background: "none", border: "none", cursor: "pointer", color: "#475569", fontSize: 14, padding: "4px 6px", borderRadius: 6, flexShrink: 0 }}
+          >
+            ↪
+          </button>
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+// ── Mobile Bottom Nav ─────────────────────────────────────────────────────────
 
 function BottomNav({ currentScreen, setCurrentScreen }) {
   if (SCREENS_WITH_NO_NAV.includes(currentScreen)) return null;
-
   return (
     <nav style={styles.bottomNav}>
       {NAV_TABS.map(tab => {
@@ -90,10 +226,7 @@ function BottomNav({ currentScreen, setCurrentScreen }) {
           <button
             key={tab.id}
             onClick={() => setCurrentScreen(tab.id)}
-            style={{
-              ...styles.navTab,
-              color: active ? "#6366f1" : "#94a3b8",
-            }}
+            style={{ ...styles.navTab, color: active ? "#6366f1" : "#94a3b8" }}
           >
             <span style={styles.navLabel}>{tab.label}</span>
             {active && <span style={styles.navDot} />}
@@ -104,14 +237,16 @@ function BottomNav({ currentScreen, setCurrentScreen }) {
   );
 }
 
-// ── App Root ─────────────────────────────────────────────────────────────────
+// ── App Root ──────────────────────────────────────────────────────────────────
 
 export default function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [user, setUser] = useState(null);
   const [signInLoading, setSignInLoading] = useState(false);
-
   const [currentScreen, setCurrentScreen] = useState("home");
+
+  const windowWidth = useWindowWidth();
+  const isDesktop = windowWidth >= 768;
 
   // Data passed between screens
   const [preBattleData, setPreBattleData] = useState(null);
@@ -125,22 +260,23 @@ export default function App() {
   const [customQuestion, setCustomQuestion] = useState(null);
 
   // Global highlight-to-lexicon
-  const { selection: globalSelection, saving: globalSaving, saved: globalSaved, handleSave: handleGlobalSave } = useGlobalHighlight(async (text) => {
-    if (!user) return;
-    const { enrichExpression } = await import("./lib/openrouter.js");
-    const { collection: col, addDoc: add, serverTimestamp: sts } = await import("firebase/firestore");
-    const { db: database } = await import("./lib/firebase.js");
-    const enriched = await enrichExpression(text);
-    await add(col(database, "users", user.uid, "lexicon"), {
-      expression: text,
-      enriched: enriched || null,
-      source: "highlight",
-      status: "new",
-      usedInBattles: 0,
-      savedAt: sts(),
-      lastUsedDate: null,
-    });
-  }, currentScreen);
+  const { selection: globalSelection, saving: globalSaving, saved: globalSaved, handleSave: handleGlobalSave } =
+    useGlobalHighlight(async (text) => {
+      if (!user) return;
+      const { enrichExpression } = await import("./lib/openrouter.js");
+      const { collection: col, addDoc: add, serverTimestamp: sts } = await import("firebase/firestore");
+      const { db: database } = await import("./lib/firebase.js");
+      const enriched = await enrichExpression(text);
+      await add(col(database, "users", user.uid, "lexicon"), {
+        expression: text,
+        enriched: enriched || null,
+        source: "highlight",
+        status: "new",
+        usedInBattles: 0,
+        savedAt: sts(),
+        lastUsedDate: null,
+      });
+    }, currentScreen);
 
   // Auth state listener
   useEffect(() => {
@@ -241,7 +377,6 @@ export default function App() {
             user={user}
             interviewData={interviewData}
             setCurrentScreen={(screen) => {
-              // intercept navigation to interviewFeedback and go through selfAssess first
               if (screen === "interviewFeedback") {
                 setCurrentScreen("interviewSelfAssess");
               } else {
@@ -272,26 +407,11 @@ export default function App() {
           />
         );
       case "storyBank":
-        return (
-          <StoryBankScreen
-            user={user}
-            setCurrentScreen={setCurrentScreen}
-          />
-        );
+        return <StoryBankScreen user={user} setCurrentScreen={setCurrentScreen} />;
       case "pushbackDrill":
-        return (
-          <PushbackDrillScreen
-            user={user}
-            setCurrentScreen={setCurrentScreen}
-          />
-        );
+        return <PushbackDrillScreen user={user} setCurrentScreen={setCurrentScreen} />;
       case "quickDrill":
-        return (
-          <QuickDrillScreen
-            user={user}
-            setCurrentScreen={setCurrentScreen}
-          />
-        );
+        return <QuickDrillScreen user={user} setCurrentScreen={setCurrentScreen} />;
       case "customQuestions":
         return (
           <CustomQuestionsScreen
@@ -315,14 +435,132 @@ export default function App() {
 
   const hasNav = !SCREENS_WITH_NO_NAV.includes(currentScreen);
 
+  // ── Global floating UI (highlight-to-lexicon) ─────────────────────────────
+  const floatingUI = (
+    <>
+      {globalSelection.text && globalSelection.pos && !globalSaving && !globalSaved && (
+        <button
+          data-lexicon-btn="true"
+          onMouseDown={(e) => { e.preventDefault(); handleGlobalSave(); }}
+          style={{
+            position: "fixed",
+            left: Math.min(globalSelection.pos.x - 70, window.innerWidth - 160),
+            top: Math.max(globalSelection.pos.y - 48, 8),
+            zIndex: 99999,
+            background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+            color: "#fff",
+            border: "none",
+            borderRadius: 20,
+            padding: "7px 14px",
+            fontSize: 12,
+            fontWeight: 700,
+            cursor: "pointer",
+            boxShadow: "0 4px 20px rgba(99,102,241,0.5)",
+            whiteSpace: "nowrap",
+            pointerEvents: "all",
+          }}
+        >
+          Save to Lexicon
+        </button>
+      )}
+      {globalSaved && (
+        <div style={{
+          position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)",
+          background: "#10b981", color: "#fff", borderRadius: 20,
+          padding: "8px 18px", fontSize: 13, fontWeight: 700, zIndex: 99999,
+          pointerEvents: "none",
+        }}>
+          Saved to Lexicon ✓
+        </div>
+      )}
+      {globalSaving && (
+        <div style={{
+          position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)",
+          background: "rgba(15,16,40,0.95)", border: "1px solid rgba(99,102,241,0.3)",
+          color: "#a5b4fc", borderRadius: 20, padding: "8px 18px",
+          fontSize: 13, fontWeight: 700, zIndex: 99999, pointerEvents: "none",
+        }}>
+          Saving...
+        </div>
+      )}
+    </>
+  );
+
+  // ── Desktop layout ────────────────────────────────────────────────────────
+  if (isDesktop) {
+    return (
+      <div style={{
+        minHeight: "100dvh",
+        background: "linear-gradient(135deg, #060818 0%, #0d1021 50%, #060818 100%)",
+        fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+        color: "#f1f5f9",
+        display: "flex",
+      }}>
+        {/* Sidebar — only on nav screens */}
+        {hasNav && (
+          <Sidebar
+            currentScreen={currentScreen}
+            setCurrentScreen={setCurrentScreen}
+            user={user}
+            onSignOut={handleSignOut}
+          />
+        )}
+
+        {/* Main content area */}
+        <div style={{
+          marginLeft: hasNav ? SIDEBAR_WIDTH : 0,
+          flex: 1,
+          minHeight: "100dvh",
+          display: "flex",
+          flexDirection: "column",
+          minWidth: 0,
+        }}>
+          {/* Desktop top bar — only on non-nav (immersive) screens */}
+          {!hasNav && (
+            <div style={{
+              height: 56,
+              background: "rgba(6,8,24,0.9)",
+              borderBottom: "1px solid rgba(255,255,255,0.07)",
+              display: "flex",
+              alignItems: "center",
+              padding: "0 24px",
+              gap: 16,
+              flexShrink: 0,
+            }}>
+              <button
+                onClick={() => setCurrentScreen("home")}
+                style={{
+                  background: "none", border: "none", cursor: "pointer",
+                  color: "#64748b", fontSize: 13, fontWeight: 600,
+                  display: "flex", alignItems: "center", gap: 6, padding: "6px 0",
+                }}
+              >
+                ← Back
+              </button>
+              <span style={{ fontSize: 14, fontWeight: 700, color: "#94a3b8" }}>FluentPM</span>
+            </div>
+          )}
+
+          <main style={{ flex: 1, overflowY: "auto" }}>
+            {renderScreen()}
+          </main>
+        </div>
+
+        {floatingUI}
+      </div>
+    );
+  }
+
+  // ── Mobile layout ─────────────────────────────────────────────────────────
   return (
     <div style={{
       minHeight: "100dvh",
       background: "linear-gradient(135deg, #060818 0%, #0d1021 50%, #060818 100%)",
       fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+      color: "#f1f5f9",
     }}>
-      <div style={{ maxWidth: 680, margin: "0 auto", position: "relative", minHeight: "100dvh" }}>
-        {/* Top bar — only on nav screens */}
+      <div style={{ maxWidth: 680, margin: "0 auto", position: "relative", minHeight: "100dvh", display: "flex", flexDirection: "column" }}>
+        {/* Mobile top bar */}
         {hasNav && (
           <div style={styles.topBar}>
             <span style={styles.topBarLogo}>FluentPM</span>
@@ -343,75 +581,21 @@ export default function App() {
           </div>
         )}
 
-        <main style={styles.mainContent}>
+        <main style={{ flex: 1 }}>
           {renderScreen()}
         </main>
 
         <BottomNav currentScreen={currentScreen} setCurrentScreen={setCurrentScreen} />
-
-        {/* Global highlight-to-lexicon */}
-        {globalSelection.text && globalSelection.pos && !globalSaving && !globalSaved && (
-          <button
-            data-lexicon-btn="true"
-            onMouseDown={(e) => { e.preventDefault(); handleGlobalSave(); }}
-            style={{
-              position: "fixed",
-              left: Math.min(globalSelection.pos.x - 70, window.innerWidth - 160),
-              top: Math.max(globalSelection.pos.y - 48, 8),
-              zIndex: 99999,
-              background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
-              color: "#fff",
-              border: "none",
-              borderRadius: 20,
-              padding: "7px 14px",
-              fontSize: 12,
-              fontWeight: 700,
-              cursor: "pointer",
-              boxShadow: "0 4px 20px rgba(99,102,241,0.5)",
-              whiteSpace: "nowrap",
-              pointerEvents: "all",
-            }}
-          >
-            Save to Lexicon
-          </button>
-        )}
-        {globalSaved && (
-          <div style={{
-            position: "fixed", bottom: 80, left: "50%", transform: "translateX(-50%)",
-            background: "#10b981", color: "#fff", borderRadius: 20,
-            padding: "8px 18px", fontSize: 13, fontWeight: 700, zIndex: 99999,
-            pointerEvents: "none",
-          }}>
-            Saved to Lexicon
-          </div>
-        )}
-        {globalSaving && (
-          <div style={{
-            position: "fixed", bottom: 80, left: "50%", transform: "translateX(-50%)",
-            background: "rgba(15,16,40,0.95)", border: "1px solid rgba(99,102,241,0.3)",
-            color: "#a5b4fc", borderRadius: 20, padding: "8px 18px",
-            fontSize: 13, fontWeight: 700, zIndex: 99999, pointerEvents: "none",
-          }}>
-            Saving...
-          </div>
-        )}
       </div>
+
+      {floatingUI}
     </div>
   );
 }
 
-// ── Styles ───────────────────────────────────────────────────────────────────
+// ── Styles ────────────────────────────────────────────────────────────────────
 
 const styles = {
-  appRoot: {
-    minHeight: "100dvh",
-    color: "#f1f5f9",
-    fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-    position: "relative",
-  },
-  mainContent: {
-    minHeight: "100dvh",
-  },
   topBar: {
     position: "sticky",
     top: 0,
@@ -424,6 +608,7 @@ const styles = {
     padding: "0 24px",
     zIndex: 100,
     boxSizing: "border-box",
+    flexShrink: 0,
   },
   topBarLogo: {
     fontSize: 18,
@@ -466,6 +651,7 @@ const styles = {
     alignItems: "center",
     justifyContent: "space-around",
     zIndex: 100,
+    flexShrink: 0,
   },
   navTab: {
     flex: 1,
@@ -500,7 +686,7 @@ const styles = {
     alignItems: "center",
     justifyContent: "center",
     padding: 24,
-    animation: "fadeIn 0.4s ease",
+    background: "linear-gradient(135deg, #060818 0%, #0d1021 50%, #060818 100%)",
   },
   signInCard: {
     background: "rgba(20,22,55,0.95)",
@@ -559,6 +745,7 @@ const styles = {
     alignItems: "center",
     justifyContent: "center",
     gap: 20,
+    background: "linear-gradient(135deg, #060818 0%, #0d1021 50%, #060818 100%)",
   },
   loadingRingWrapper: {
     position: "relative",

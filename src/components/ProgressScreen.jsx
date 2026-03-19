@@ -563,7 +563,7 @@ export default function ProgressScreen({ user, setCurrentScreen }) {
 
 const styles = {
   container: {
-    maxWidth: 680,
+    maxWidth: 900,
     margin: "0 auto",
     padding: "24px 20px 24px",
     paddingTop: 80,

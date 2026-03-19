@@ -61,7 +61,7 @@ export default function ProfileScreen({ user, setCurrentScreen }) {
   const readinessLabel = readinessScore >= 70 ? "Interview Ready" : readinessScore >= 40 ? "Getting There" : "Keep Practising";
 
   return (
-    <div style={{ maxWidth: 680, margin: "0 auto", padding: "24px 20px 100px", color: "#f1f5f9", fontFamily: "'Inter', sans-serif", minHeight: "100dvh" }}>
+    <div style={{ maxWidth: 900, margin: "0 auto", padding: "24px 20px 100px", color: "#f1f5f9", fontFamily: "'Inter', sans-serif", minHeight: "100dvh" }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 28 }}>
         <div style={{ width: 52, height: 52, borderRadius: "50%", background: "linear-gradient(135deg, #6366f1, #8b5cf6)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, fontWeight: 700, color: "#fff", flexShrink: 0 }}>
