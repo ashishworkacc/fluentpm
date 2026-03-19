@@ -1,15 +1,21 @@
 import { useState, useEffect } from "react";
 
-export function useGlobalHighlight(onSave) {
+export function useGlobalHighlight(onSave, currentScreen) {
   const [selection, setSelection] = useState({ text: "", pos: null });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     function handleMouseUp(e) {
+      const noHighlightScreens = ["battle", "interview", "preBattle"];
+      if (noHighlightScreens.includes(currentScreen)) return;
+
       // Skip if clicking on input/textarea/button
       const target = e.target;
       if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "BUTTON") return;
+
+      // Skip if target or ancestor has data-no-highlight
+      if (target.closest("[data-no-highlight]")) return;
 
       setTimeout(() => {
         const sel = window.getSelection();
@@ -37,7 +43,7 @@ export function useGlobalHighlight(onSave) {
       document.removeEventListener("mouseup", handleMouseUp);
       document.removeEventListener("mousedown", handleMouseDown);
     };
-  }, []);
+  }, [currentScreen]);
 
   async function handleSave() {
     if (!selection.text || saving) return;

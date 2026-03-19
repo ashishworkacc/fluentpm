@@ -13,6 +13,13 @@ function getTodayDateString() {
 }
 
 function getDailyChallenge(uid) {
+  const today = new Date().toISOString().slice(0, 10);
+  const cacheKey = `fluentpm_daily_${uid}_${today}`;
+  try {
+    const cached = JSON.parse(localStorage.getItem(cacheKey) || "null");
+    if (cached && cached.opponent && cached.scenario) return cached;
+  } catch {}
+
   // Get recent history
   const recentScenarios = JSON.parse(localStorage.getItem(`fluentpm_recent_scenarios_${uid}`) || "[]");
   const recentOpponents = JSON.parse(localStorage.getItem(`fluentpm_recent_opponents_${uid}`) || "[]");
@@ -35,6 +42,11 @@ function getDailyChallenge(uid) {
   try {
     localStorage.setItem(`fluentpm_recent_scenarios_${uid}`, JSON.stringify(newScenarios));
     localStorage.setItem(`fluentpm_recent_opponents_${uid}`, JSON.stringify(newOpponents));
+  } catch {}
+
+  // Save to stable daily cache
+  try {
+    localStorage.setItem(cacheKey, JSON.stringify({ opponent, scenario }));
   } catch {}
 
   return { opponent, scenario };

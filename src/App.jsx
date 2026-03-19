@@ -19,6 +19,7 @@ import StoryBankScreen from "./components/StoryBankScreen.jsx";
 import PushbackDrillScreen from "./components/PushbackDrillScreen.jsx";
 import QuickDrillScreen from "./components/QuickDrillScreen.jsx";
 import CustomQuestionsScreen from "./components/CustomQuestionsScreen.jsx";
+import ProfileScreen from "./components/ProfileScreen.jsx";
 
 // ── Sign-In Screen ───────────────────────────────────────────────────────────
 
@@ -72,7 +73,8 @@ const NAV_TABS = [
   { id: "home",          label: "Practice"  },
   { id: "lexicon",       label: "Lexicon"   },
   { id: "progress",      label: "Progress"  },
-  { id: "interviewHome", label: "Interview", icon: "🎯" },
+  { id: "profile",       label: "Profile"   },
+  { id: "interviewHome", label: "Interview" },
 ];
 
 const SCREENS_WITH_NO_NAV = ["preBattle", "battle", "feedback", "lightning", "interview", "interviewFeedback", "interviewSelfAssess", "storyBank", "pushbackDrill", "quickDrill", "customQuestions"];
@@ -138,7 +140,7 @@ export default function App() {
       savedAt: sts(),
       lastUsedDate: null,
     });
-  });
+  }, currentScreen);
 
   // Auth state listener
   useEffect(() => {
@@ -218,6 +220,8 @@ export default function App() {
         return <LexiconScreen user={user} setCurrentScreen={setCurrentScreen} />;
       case "progress":
         return <ProgressScreen user={user} setCurrentScreen={setCurrentScreen} />;
+      case "profile":
+        return <ProfileScreen user={user} setCurrentScreen={setCurrentScreen} />;
       case "phrases":
         return <PhrasesScreen setCurrentScreen={setCurrentScreen} />;
       case "lightning":
@@ -312,84 +316,86 @@ export default function App() {
   const hasNav = !SCREENS_WITH_NO_NAV.includes(currentScreen);
 
   return (
-    <div style={styles.appRoot}>
-      {/* Top bar — only on nav screens */}
-      {hasNav && (
-        <div style={styles.topBar}>
-          <span style={styles.topBarLogo}>FluentPM</span>
-          <button onClick={handleSignOut} style={styles.signOutBtn}>
-            {user.photoURL ? (
-              <img
-                src={user.photoURL}
-                alt={user.displayName}
-                style={styles.avatarImg}
-                referrerPolicy="no-referrer"
-              />
-            ) : (
-              <span style={styles.avatarFallback}>
-                {(user.displayName || user.email || "U")[0].toUpperCase()}
-              </span>
-            )}
+    <div style={{
+      minHeight: "100dvh",
+      background: "linear-gradient(135deg, #060818 0%, #0d1021 50%, #060818 100%)",
+      fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+    }}>
+      <div style={{ maxWidth: 680, margin: "0 auto", position: "relative", minHeight: "100dvh" }}>
+        {/* Top bar — only on nav screens */}
+        {hasNav && (
+          <div style={styles.topBar}>
+            <span style={styles.topBarLogo}>FluentPM</span>
+            <button onClick={handleSignOut} style={styles.signOutBtn}>
+              {user.photoURL ? (
+                <img
+                  src={user.photoURL}
+                  alt={user.displayName}
+                  style={styles.avatarImg}
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <span style={styles.avatarFallback}>
+                  {(user.displayName || user.email || "U")[0].toUpperCase()}
+                </span>
+              )}
+            </button>
+          </div>
+        )}
+
+        <main style={styles.mainContent}>
+          {renderScreen()}
+        </main>
+
+        <BottomNav currentScreen={currentScreen} setCurrentScreen={setCurrentScreen} />
+
+        {/* Global highlight-to-lexicon */}
+        {globalSelection.text && globalSelection.pos && !globalSaving && !globalSaved && (
+          <button
+            data-lexicon-btn="true"
+            onMouseDown={(e) => { e.preventDefault(); handleGlobalSave(); }}
+            style={{
+              position: "fixed",
+              left: Math.min(globalSelection.pos.x - 70, window.innerWidth - 160),
+              top: Math.max(globalSelection.pos.y - 48, 8),
+              zIndex: 99999,
+              background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+              color: "#fff",
+              border: "none",
+              borderRadius: 20,
+              padding: "7px 14px",
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: "pointer",
+              boxShadow: "0 4px 20px rgba(99,102,241,0.5)",
+              whiteSpace: "nowrap",
+              pointerEvents: "all",
+            }}
+          >
+            Save to Lexicon
           </button>
-        </div>
-      )}
-
-      <main style={{
-        ...styles.mainContent,
-        paddingTop: hasNav ? 60 : 0,
-        paddingBottom: hasNav ? 80 : 0,
-      }}>
-        {renderScreen()}
-      </main>
-
-      <BottomNav currentScreen={currentScreen} setCurrentScreen={setCurrentScreen} />
-
-      {/* Global highlight-to-lexicon */}
-      {globalSelection.text && globalSelection.pos && !globalSaving && !globalSaved && (
-        <button
-          data-lexicon-btn="true"
-          onMouseDown={(e) => { e.preventDefault(); handleGlobalSave(); }}
-          style={{
-            position: "fixed",
-            left: Math.min(globalSelection.pos.x - 70, window.innerWidth - 160),
-            top: Math.max(globalSelection.pos.y - 48, 8),
-            zIndex: 99999,
-            background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
-            color: "#fff",
-            border: "none",
-            borderRadius: 20,
-            padding: "7px 14px",
-            fontSize: 12,
-            fontWeight: 700,
-            cursor: "pointer",
-            boxShadow: "0 4px 20px rgba(99,102,241,0.5)",
-            whiteSpace: "nowrap",
-            pointerEvents: "all",
-          }}
-        >
-          Save to Lexicon
-        </button>
-      )}
-      {globalSaved && (
-        <div style={{
-          position: "fixed", bottom: 80, left: "50%", transform: "translateX(-50%)",
-          background: "#10b981", color: "#fff", borderRadius: 20,
-          padding: "8px 18px", fontSize: 13, fontWeight: 700, zIndex: 99999,
-          pointerEvents: "none",
-        }}>
-          Saved to Lexicon
-        </div>
-      )}
-      {globalSaving && (
-        <div style={{
-          position: "fixed", bottom: 80, left: "50%", transform: "translateX(-50%)",
-          background: "rgba(15,16,40,0.95)", border: "1px solid rgba(99,102,241,0.3)",
-          color: "#a5b4fc", borderRadius: 20, padding: "8px 18px",
-          fontSize: 13, fontWeight: 700, zIndex: 99999, pointerEvents: "none",
-        }}>
-          Saving...
-        </div>
-      )}
+        )}
+        {globalSaved && (
+          <div style={{
+            position: "fixed", bottom: 80, left: "50%", transform: "translateX(-50%)",
+            background: "#10b981", color: "#fff", borderRadius: 20,
+            padding: "8px 18px", fontSize: 13, fontWeight: 700, zIndex: 99999,
+            pointerEvents: "none",
+          }}>
+            Saved to Lexicon
+          </div>
+        )}
+        {globalSaving && (
+          <div style={{
+            position: "fixed", bottom: 80, left: "50%", transform: "translateX(-50%)",
+            background: "rgba(15,16,40,0.95)", border: "1px solid rgba(99,102,241,0.3)",
+            color: "#a5b4fc", borderRadius: 20, padding: "8px 18px",
+            fontSize: 13, fontWeight: 700, zIndex: 99999, pointerEvents: "none",
+          }}>
+            Saving...
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -407,12 +413,10 @@ const styles = {
     minHeight: "100dvh",
   },
   topBar: {
-    position: "fixed",
+    position: "sticky",
     top: 0,
-    left: 0,
-    right: 0,
     height: 60,
-    background: "rgba(6,8,24,0.7)",
+    background: "rgba(6,8,24,0.85)",
     borderBottom: "1px solid rgba(255,255,255,0.08)",
     display: "flex",
     alignItems: "center",
@@ -453,12 +457,10 @@ const styles = {
     fontWeight: 700,
   },
   bottomNav: {
-    position: "fixed",
+    position: "sticky",
     bottom: 0,
-    left: 0,
-    right: 0,
     height: 68,
-    background: "rgba(6,8,24,0.85)",
+    background: "rgba(6,8,24,0.92)",
     borderTop: "1px solid rgba(255,255,255,0.08)",
     display: "flex",
     alignItems: "center",

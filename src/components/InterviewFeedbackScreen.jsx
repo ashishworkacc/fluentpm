@@ -88,12 +88,20 @@ export default function InterviewFeedbackScreen({
           const newRank = getRankFromXP(newXP);
           await updateDoc(profileRef, { xp: newXP, rank: newRank, lastPlayedDate: today, sessionsCount: increment(1) });
           try {
-            const cached = JSON.parse(localStorage.getItem(`fluentpm_profile_${user.uid}`) || "{}");
-            localStorage.setItem(`fluentpm_profile_${user.uid}`, JSON.stringify({ ...cached, xp: newXP, rank: newRank, lastPlayedDate: today }));
+            const cacheKey = `fluentpm_profile_${user.uid}`;
+            const existing = JSON.parse(localStorage.getItem(cacheKey) || "{}");
+            const updated = { ...existing, xp: newXP, rank: newRank, streak: existing.streak || 1, lastPlayedDate: today };
+            localStorage.setItem(cacheKey, JSON.stringify(updated));
           } catch {}
         } else {
           const { getRankFromXP: getRank } = await import("../hooks/useProgress.js");
-          await setDoc(profileRef, { xp: xpEarned, rank: getRank(xpEarned), streak: 1, lastPlayedDate: today, sessionsCount: 1 });
+          const initXP = xpEarned;
+          const initRank = getRank(initXP);
+          await setDoc(profileRef, { xp: initXP, rank: initRank, streak: 1, lastPlayedDate: today, sessionsCount: 1 });
+          try {
+            const cacheKey = `fluentpm_profile_${user.uid}`;
+            localStorage.setItem(cacheKey, JSON.stringify({ xp: initXP, rank: initRank, streak: 1, lastPlayedDate: today }));
+          } catch {}
         }
       } catch (e) { console.error("XP update error:", e); }
     }

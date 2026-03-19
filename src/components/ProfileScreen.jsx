@@ -1,0 +1,190 @@
+import { useState, useEffect } from "react";
+import { collection, query, limit, getDocs } from "firebase/firestore";
+import { db } from "../lib/firebase.js";
+
+const glassCard = {
+  background: "rgba(15,16,40,0.82)",
+  border: "1px solid rgba(255,255,255,0.08)",
+  borderRadius: 18,
+};
+
+export default function ProfileScreen({ user, setCurrentScreen }) {
+  const [sessions, setSessions] = useState([]);
+  const [interviews, setInterviews] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        const sSnap = await getDocs(query(collection(db, "users", user.uid, "sessions"), limit(20)));
+        const iSnap = await getDocs(query(collection(db, "users", user.uid, "interviewSessions"), limit(20)));
+        setSessions(sSnap.docs.map(d => d.data()).sort((a, b) => (b.savedAt || "").localeCompare(a.savedAt || "")));
+        setInterviews(iSnap.docs.map(d => d.data()).sort((a, b) => (b.savedAt || "").localeCompare(a.savedAt || "")));
+      } catch {}
+      finally { setLoading(false); }
+    }
+    fetchData();
+  }, [user.uid]);
+
+  // Compute metrics
+  const allScores = sessions.map(s => s.aiScore || s.score).filter(Boolean);
+  const avgScore = allScores.length ? allScores.reduce((a, b) => a + b, 0) / allScores.length : 0;
+  const readinessScore = Math.min(Math.round((avgScore / 10) * 100), 100);
+
+  // Frequent mistakes: count weak phrase occurrences
+  const phraseCounts = {};
+  sessions.forEach(s => {
+    (s.weakPhrases || []).forEach(p => {
+      phraseCounts[p] = (phraseCounts[p] || 0) + 1;
+    });
+  });
+  const topMistakes = Object.entries(phraseCounts)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 5);
+
+  // Interview verdicts
+  const recentVerdicts = interviews.slice(0, 5).filter(i => i.verdict);
+
+  // Improvements from latest sessions
+  const improvements = [];
+  sessions.slice(0, 5).forEach(s => {
+    if (s.tip && !improvements.includes(s.tip)) improvements.push(s.tip);
+    if (s.improve1 && !improvements.includes(s.improve1)) improvements.push(s.improve1);
+  });
+  interviews.slice(0, 3).forEach(i => {
+    if (i.improve1 && !improvements.includes(i.improve1)) improvements.push(i.improve1);
+  });
+
+  const totalAttempted = sessions.length + interviews.length;
+
+  const readinessColor = readinessScore >= 70 ? "#10b981" : readinessScore >= 40 ? "#f59e0b" : "#f43f5e";
+  const readinessLabel = readinessScore >= 70 ? "Interview Ready" : readinessScore >= 40 ? "Getting There" : "Keep Practising";
+
+  return (
+    <div style={{ maxWidth: 680, margin: "0 auto", padding: "24px 20px 100px", color: "#f1f5f9", fontFamily: "'Inter', sans-serif", minHeight: "100dvh" }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 28 }}>
+        <div style={{ width: 52, height: 52, borderRadius: "50%", background: "linear-gradient(135deg, #6366f1, #8b5cf6)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, fontWeight: 700, color: "#fff", flexShrink: 0 }}>
+          {user.displayName?.[0] || user.email?.[0] || "?"}
+        </div>
+        <div>
+          <div style={{ fontSize: 18, fontWeight: 800, color: "#f1f5f9" }}>{user.displayName || "PM Candidate"}</div>
+          <div style={{ fontSize: 13, color: "#64748b" }}>{user.email}</div>
+        </div>
+      </div>
+
+      {loading ? (
+        <div style={{ textAlign: "center", padding: 60, color: "#475569" }}>Loading your profile...</div>
+      ) : (
+        <>
+          {/* Interview Readiness */}
+          <div style={{ ...glassCard, padding: "22px 20px", marginBottom: 16, textAlign: "center" }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "1px", marginBottom: 12 }}>Interview Readiness</div>
+            <div style={{ fontSize: 64, fontWeight: 900, color: readinessColor, lineHeight: 1, letterSpacing: "-2px", marginBottom: 8 }}>
+              {readinessScore}%
+            </div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: readinessColor, marginBottom: 16 }}>{readinessLabel}</div>
+            <div style={{ height: 8, background: "rgba(255,255,255,0.06)", borderRadius: 4, overflow: "hidden", marginBottom: 12 }}>
+              <div style={{ height: "100%", width: `${readinessScore}%`, background: `linear-gradient(90deg, ${readinessColor}, ${readinessColor}88)`, borderRadius: 4, transition: "width 0.8s ease" }} />
+            </div>
+            <div style={{ fontSize: 12, color: "#64748b" }}>
+              Based on {totalAttempted} session{totalAttempted !== 1 ? "s" : ""} · {sessions.length} arena · {interviews.length} interviews
+            </div>
+          </div>
+
+          {/* Stats Row */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 16 }}>
+            {[
+              { icon: "🎯", value: sessions.length, label: "Arena Sessions" },
+              { icon: "🎤", value: interviews.length, label: "Interviews" },
+              { icon: "📊", value: avgScore > 0 ? avgScore.toFixed(1) : "—", label: "Avg Score" },
+            ].map((stat, i) => (
+              <div key={i} style={{ ...glassCard, padding: "16px 10px", textAlign: "center" }}>
+                <div style={{ fontSize: 22, marginBottom: 6 }}>{stat.icon}</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: "#f1f5f9", letterSpacing: "-0.5px" }}>{stat.value}</div>
+                <div style={{ fontSize: 11, color: "#64748b", lineHeight: 1.3, fontWeight: 600 }}>{stat.label}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Frequent Mistakes */}
+          {topMistakes.length > 0 && (
+            <div style={{ ...glassCard, padding: "18px 18px", marginBottom: 14, borderLeft: "4px solid #f43f5e", borderRadius: "0 18px 18px 0" }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#f43f5e", textTransform: "uppercase", letterSpacing: "1px", marginBottom: 12 }}>
+                Phrases to Drop
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {topMistakes.map(([phrase, count], i) => (
+                  <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 10px", background: "rgba(244,63,94,0.06)", borderRadius: 8 }}>
+                    <span style={{ fontSize: 13, color: "#f43f5e", textDecoration: "line-through" }}>{phrase}</span>
+                    <span style={{ fontSize: 11, color: "#94a3b8" }}>x{count}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* What Interviewers Thought */}
+          {recentVerdicts.length > 0 && (
+            <div style={{ ...glassCard, padding: "18px 18px", marginBottom: 14, borderLeft: "4px solid #8b5cf6", borderRadius: "0 18px 18px 0" }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#8b5cf6", textTransform: "uppercase", letterSpacing: "1px", marginBottom: 12 }}>
+                Interviewer Verdicts
+              </div>
+              {recentVerdicts.map((iv, i) => {
+                const vColor = iv.verdict?.toLowerCase().includes("hire") && !iv.verdict?.toLowerCase().includes("no") ? "#10b981" : "#f43f5e";
+                return (
+                  <div key={i} style={{ marginBottom: 12, paddingBottom: 12, borderBottom: i < recentVerdicts.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, padding: "2px 10px", borderRadius: 20, background: `${vColor}18`, color: vColor }}>
+                        {iv.verdict}
+                      </span>
+                      {iv.interviewerName && <span style={{ fontSize: 12, color: "#64748b" }}>{iv.interviewerName}</span>}
+                    </div>
+                    {iv.verdictReason && (
+                      <div style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.5, fontStyle: "italic" }}>"{iv.verdictReason}"</div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* What To Improve */}
+          {improvements.length > 0 && (
+            <div style={{ ...glassCard, padding: "18px 18px", marginBottom: 14, borderLeft: "4px solid #06b6d4", borderRadius: "0 18px 18px 0" }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#06b6d4", textTransform: "uppercase", letterSpacing: "1px", marginBottom: 12 }}>
+                Top Coaching Notes
+              </div>
+              {improvements.slice(0, 5).map((tip, i) => (
+                <div key={i} style={{ display: "flex", gap: 10, marginBottom: 10, alignItems: "flex-start" }}>
+                  <span style={{ fontSize: 14, color: "#06b6d4", flexShrink: 0, marginTop: 1 }}>→</span>
+                  <span style={{ fontSize: 13, color: "#cbd5e1", lineHeight: 1.6 }}>{tip}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Next Steps */}
+          <div style={{ ...glassCard, padding: "18px 18px", marginBottom: 14, background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.15)" }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#6366f1", textTransform: "uppercase", letterSpacing: "1px", marginBottom: 12 }}>
+              Next Step
+            </div>
+            <div style={{ fontSize: 14, color: "#a5b4fc", lineHeight: 1.6 }}>
+              {readinessScore >= 70
+                ? "You're interview ready. Focus on Quick Drills to sharpen edge-case questions and cement your structure."
+                : readinessScore >= 40
+                  ? `Complete ${Math.max(5, 10 - sessions.length)} more arena sessions and review your weak phrases. Your readiness grows with volume.`
+                  : "Start with Daily Arena challenges every day. Focus on one framework (PREP or STAR) and apply it consistently."}
+            </div>
+            <button
+              onClick={() => setCurrentScreen("home")}
+              style={{ marginTop: 14, width: "100%", padding: "12px", background: "linear-gradient(135deg, #6366f1, #8b5cf6)", color: "#fff", border: "none", borderRadius: 12, fontSize: 14, fontWeight: 700, cursor: "pointer" }}
+            >
+              Start Practising →
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}

@@ -178,6 +178,9 @@ export default function FeedbackScreen({ user, sessionData, opponent, setCurrent
   const [generatingElite, setGeneratingElite] = useState(false);
   const [isPlayingElite, setIsPlayingElite] = useState(false);
   const [echoRecording, setEchoRecording] = useState(false);
+  const [echoTranscript, setEchoTranscript] = useState("");
+  const [echoScore, setEchoScore] = useState(null);
+  const [scoringEcho, setScoringEcho] = useState(false);
   const echoRecognitionRef = useRef(null);
 
   async function saveToLexicon(phrase) {
@@ -221,7 +224,19 @@ export default function FeedbackScreen({ user, sessionData, opponent, setCurrent
     setGeneratingElite(true);
     try {
       const elite = await generateEliteVersion(sd.transcript, sd.scenarioText, opponent?.name || "PM");
-      setEliteResponse(elite || "Unable to generate elite response. Try again.");
+      const eliteText = elite || "Unable to generate elite response. Try again.";
+      setEliteResponse(eliteText);
+      // Save to Firestore for future reference
+      try {
+        await addDoc(collection(db, "users", user.uid, "eliteResponses"), {
+          transcript: sd.transcript,
+          scenarioText: sd.scenarioText || "",
+          opponentName: opponent?.name || "",
+          eliteVersion: eliteText,
+          savedAt: serverTimestamp(),
+          date: new Date().toISOString().slice(0, 10),
+        });
+      } catch {}
     } catch {
       setEliteResponse("Unable to generate elite response. Try again.");
     } finally {
@@ -247,14 +262,38 @@ export default function FeedbackScreen({ user, sessionData, opponent, setCurrent
 
   async function startEchoRecording() {
     try {
+      setEchoTranscript("");
+      setEchoScore(null);
       setEchoRecording(true);
       echoRecognitionRef.current = startRecognition(
-        () => {},
-        () => { setEchoRecording(false); }
+        (transcript) => setEchoTranscript(transcript),
+        (final) => {
+          const captured = (final || "").trim();
+          if (captured) {
+            setEchoTranscript(captured);
+            scoreEcho(captured);
+          }
+          setEchoRecording(false);
+        }
       );
     } catch {
       setEchoRecording(false);
     }
+  }
+
+  async function scoreEcho(userEcho) {
+    if (!eliteResponse || !userEcho) return;
+    setScoringEcho(true);
+    try {
+      const eliteWords = new Set(eliteResponse.toLowerCase().split(/\W+/).filter(w => w.length > 4));
+      const echoWords = new Set(userEcho.toLowerCase().split(/\W+/).filter(w => w.length > 4));
+      const overlap = [...eliteWords].filter(w => echoWords.has(w)).length;
+      const pct = eliteWords.size > 0 ? Math.round((overlap / eliteWords.size) * 100) : 0;
+      const echoScoreVal = pct >= 70 ? 5 : pct >= 50 ? 4 : pct >= 30 ? 3 : pct >= 15 ? 2 : 1;
+      const echoLabel = echoScoreVal >= 5 ? "Excellent match!" : echoScoreVal >= 4 ? "Good echo" : echoScoreVal >= 3 ? "Getting there" : "Keep practising";
+      setEchoScore({ score: echoScoreVal, label: echoLabel, pct });
+    } catch {}
+    finally { setScoringEcho(false); }
   }
 
   function stopEchoRecording() {
@@ -521,6 +560,37 @@ export default function FeedbackScreen({ user, sessionData, opponent, setCurrent
                 </div>
               </div>
             )}
+            {/* Enhanced structure analysis */}
+            {sd.structureScore !== undefined && (
+              <div style={{ marginTop: 10, marginBottom: 10 }}>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+                  {sd.frameworkFit && (
+                    <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 20, background: "rgba(139,92,246,0.12)", color: "#c4b5fd", fontWeight: 700 }}>
+                      Framework fit: {sd.frameworkFit}/5
+                    </span>
+                  )}
+                  <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 20,
+                    background: sd.structureScore >= 4 ? "rgba(16,185,129,0.12)" : sd.structureScore >= 3 ? "rgba(245,158,11,0.12)" : "rgba(244,63,94,0.12)",
+                    color: sd.structureScore >= 4 ? "#10b981" : sd.structureScore >= 3 ? "#f59e0b" : "#f43f5e",
+                    fontWeight: 700
+                  }}>
+                    {sd.structureScore >= 4 ? "✓ Well-structured" : sd.structureScore >= 3 ? "⚡ Needs tightening" : "✗ Needs structure"}
+                  </span>
+                </div>
+                <div style={{ fontSize: 12, color: "#64748b", lineHeight: 1.5, marginBottom: 8 }}>
+                  {sd.structureScore >= 4
+                    ? "You opened with a clear point, backed it with evidence, and closed well. This is executive-level structure."
+                    : sd.structureScore >= 3
+                      ? "You had a point to make but it was buried. Lead with your conclusion, then explain why."
+                      : "Your answer read as stream-of-consciousness. Use PREP: Point → Reason → Example → Point."}
+                </div>
+                {sd.frameworkTip && sd.frameworkTip !== "none" && (
+                  <div style={{ fontSize: 13, color: "#94a3b8", fontStyle: "italic", lineHeight: 1.5 }}>
+                    "{sd.frameworkTip}"
+                  </div>
+                )}
+              </div>
+            )}
             {sd.structureTip && (
               <p style={{ ...styles.bodyText, marginBottom: sd.structureReplayShow ? 14 : 0 }}>
                 {sd.structureTip}
@@ -617,6 +687,24 @@ export default function FeedbackScreen({ user, sessionData, opponent, setCurrent
                   {echoRecording ? "⏹ Stop Echo" : "🎤 Echo It"}
                 </button>
               </div>
+              {echoTranscript && (
+                <div style={{ marginTop: 10, padding: "10px 12px", background: "rgba(6,182,212,0.06)", border: "1px solid rgba(6,182,212,0.15)", borderRadius: 10 }}>
+                  <div style={{ fontSize: 11, color: "#06b6d4", fontWeight: 700, marginBottom: 4, textTransform: "uppercase" }}>Your echo</div>
+                  <div style={{ fontSize: 13, color: "#cbd5e1", lineHeight: 1.5, fontStyle: "italic" }}>{echoTranscript}</div>
+                </div>
+              )}
+              {scoringEcho && (
+                <div style={{ marginTop: 8, fontSize: 12, color: "#64748b", textAlign: "center" }}>Scoring your echo...</div>
+              )}
+              {echoScore && !scoringEcho && (
+                <div style={{ marginTop: 10, padding: "10px 12px", background: "rgba(139,92,246,0.08)", border: "1px solid rgba(139,92,246,0.2)", borderRadius: 10, display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{ fontSize: 22, fontWeight: 900, color: "#8b5cf6" }}>{echoScore.score}/5</div>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "#c4b5fd" }}>{echoScore.label}</div>
+                    <div style={{ fontSize: 11, color: "#64748b" }}>{echoScore.pct}% phrase match with elite version</div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </SectionCard>

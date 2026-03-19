@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { collection, query, orderBy, limit, getDocs } from "firebase/firestore";
+import { collection, query, limit, getDocs } from "firebase/firestore";
 import { db } from "../lib/firebase.js";
 import { RANKS } from "../hooks/useProgress.js";
 
@@ -427,18 +427,23 @@ export default function ProgressScreen({ user, setCurrentScreen }) {
   const sessionsCount = profile.sessionsCount || 0;
 
   useEffect(() => {
+    const safetyTimer = setTimeout(() => setLoading(false), 8000);
+
     async function fetchSessions() {
       try {
         const sessionsRef = collection(db, "users", user.uid, "sessions");
-        const q = query(sessionsRef, orderBy("savedAt", "desc"), limit(10));
+        const q = query(sessionsRef, limit(20));
         const snap = await getDocs(q);
-        const data = snap.docs.map(d => d.data());
+        const data = snap.docs
+          .map(d => d.data())
+          .sort((a, b) => (b.savedAt || b.timestamp || "").localeCompare(a.savedAt || a.timestamp || ""))
+          .slice(0, 10);
         setSessions(data);
 
         // Also fetch interview sessions for saved debriefs
         try {
           const interviewRef = collection(db, "users", user.uid, "interviewSessions");
-          const iq = query(interviewRef, orderBy("savedAt", "desc"), limit(10));
+          const iq = query(interviewRef, limit(20));
           const isnap = await getDocs(iq);
           const interviewData = isnap.docs.map(d => ({ ...d.data(), _type: "interview" }));
           const battleData = data.map(d => ({ ...d, _type: "battle" }));
@@ -457,7 +462,9 @@ export default function ProgressScreen({ user, setCurrentScreen }) {
         setLoading(false);
       }
     }
-    fetchSessions();
+
+    fetchSessions().finally(() => clearTimeout(safetyTimer));
+    return () => clearTimeout(safetyTimer);
   }, [user.uid]);
 
   // Compute stats from fetched sessions
