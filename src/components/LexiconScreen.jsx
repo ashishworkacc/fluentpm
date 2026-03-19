@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   collection,
   getDocs,
@@ -68,7 +68,7 @@ function Spinner() {
   );
 }
 
-function CaptureModal({ onClose, onSave }) {
+function CaptureModal({ onClose, onSave, onBulkSave }) {
   const [mode, setMode] = useState("single"); // "single" | "bulk"
   const [text, setText] = useState("");
   const [source, setSource] = useState(null);
@@ -102,35 +102,12 @@ function CaptureModal({ onClose, onSave }) {
     if (lines.length === 0) return;
     setLoading(true);
     setError(null);
-    setBulkProgress({ current: 0, total: lines.length });
-
-    let saved = 0;
-    let failed = 0;
-
-    for (let i = 0; i < lines.length; i++) {
-      setBulkProgress({ current: i + 1, total: lines.length });
-      try {
-        const enriched = await enrichExpression(lines[i]);
-        if (!enriched) throw new Error("empty");
-        await onSave(lines[i], enriched, source);
-        saved++;
-      } catch {
-        failed++;
-      }
-      // 500ms delay between calls to avoid rate limits
-      if (i < lines.length - 1) {
-        await new Promise(res => setTimeout(res, 500));
-      }
-    }
-
-    setLoading(false);
-    setBulkProgress(null);
-
-    if (failed === 0) {
-      setError(null);
+    try {
+      await onBulkSave(lines, source); // saves instantly to Firestore, enrichment runs in background
       onClose();
-    } else {
-      setError(`${saved} of ${lines.length} saved. Some failed — try again.`);
+    } catch (err) {
+      setError("Failed to save. Try again.");
+      setLoading(false);
     }
   }
 
@@ -258,26 +235,6 @@ function CaptureModal({ onClose, onSave }) {
               </div>
             </div>
 
-            {/* Progress indicator */}
-            {bulkProgress && (
-              <div style={{
-                background: "rgba(99,102,241,0.08)",
-                border: "1px solid rgba(99,102,241,0.2)",
-                borderRadius: 10,
-                padding: "10px 12px",
-                color: "#818cf8",
-                fontSize: 13,
-                fontWeight: 600,
-                marginBottom: 12,
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-              }}>
-                <Spinner />
-                Enriching {bulkProgress.current} of {bulkProgress.total}...
-              </div>
-            )}
-
             {error && <div style={styles.errorBox}>{error}</div>}
 
             <button
@@ -289,9 +246,9 @@ function CaptureModal({ onClose, onSave }) {
                 cursor: bulkLines === 0 || loading ? "default" : "pointer",
               }}
             >
-              {loading && !bulkProgress ? (
+              {loading ? (
                 <span style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "center" }}>
-                  <Spinner /> Importing...
+                  <Spinner /> Saving...
                 </span>
               ) : `Import ${bulkLines > 0 ? bulkLines : ""} expression${bulkLines !== 1 ? "s" : ""}`}
             </button>
@@ -502,6 +459,8 @@ export default function LexiconScreen({ user, setCurrentScreen }) {
   const [items, setItems] = useState([]);
   const [activeTab, setActiveTab] = useState(0);
   const [showCapture, setShowCapture] = useState(false);
+  const [bgEnrichProgress, setBgEnrichProgress] = useState(null);
+  const bgEnrichRef = useRef(false);
 
   useEffect(() => {
     fetchLexicon();
@@ -522,15 +481,63 @@ export default function LexiconScreen({ user, setCurrentScreen }) {
   async function handleSave(expression, enriched, source) {
     const newItem = {
       expression,
-      enriched,
+      enriched: enriched || null,
       source: source || null,
       status: "new",
       usedInBattles: 0,
       savedAt: new Date().toISOString(),
       lastUsedDate: null,
     };
-    await addDoc(collection(db, "users", user.uid, "lexicon"), newItem);
+    const docRef = await addDoc(collection(db, "users", user.uid, "lexicon"), newItem);
     await fetchLexicon();
+    return docRef.id;
+  }
+
+  async function onBulkSave(expressions, source) {
+    // Step 1: Save all to Firestore instantly with status: pending_enrichment
+    const docIds = [];
+    for (const expr of expressions) {
+      try {
+        const ref = await addDoc(collection(db, "users", user.uid, "lexicon"), {
+          expression: expr,
+          enriched: null,
+          source: source || null,
+          status: "pending_enrichment",
+          usedInBattles: 0,
+          savedAt: new Date().toISOString(),
+          lastUsedDate: null,
+        });
+        docIds.push({ expr, id: ref.id });
+      } catch {}
+    }
+    await fetchLexicon(); // show pending items immediately
+
+    // Step 2: Enrich in background batches of 5 (non-blocking)
+    runBackgroundEnrichment(docIds);
+  }
+
+  async function runBackgroundEnrichment(docIds) {
+    if (bgEnrichRef.current) return; // prevent duplicate runs
+    bgEnrichRef.current = true;
+    setBgEnrichProgress({ current: 0, total: docIds.length });
+    let done = 0;
+    for (let i = 0; i < docIds.length; i += 5) {
+      const batch = docIds.slice(i, i + 5);
+      await Promise.all(batch.map(async ({ expr, id }) => {
+        try {
+          const enriched = await enrichExpression(expr);
+          if (enriched) {
+            const ref = doc(db, "users", user.uid, "lexicon", id);
+            await updateDoc(ref, { enriched, status: "new" });
+          }
+          done++;
+          setBgEnrichProgress(p => p ? { ...p, current: done } : null);
+        } catch {}
+      }));
+      await fetchLexicon(); // refresh after each batch
+    }
+    setBgEnrichProgress(null);
+    bgEnrichRef.current = false;
   }
 
   async function handleMarkMastered(itemId) {
@@ -565,6 +572,29 @@ export default function LexiconScreen({ user, setCurrentScreen }) {
           {items.length} saved
         </div>
       </div>
+
+      {/* Background enrichment progress bar */}
+      {bgEnrichProgress && (
+        <div style={{
+          background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.15)",
+          borderRadius: 12, padding: "10px 14px", marginBottom: 14,
+          display: "flex", alignItems: "center", gap: 10,
+        }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 12, color: "#818cf8", fontWeight: 700, marginBottom: 4 }}>
+              Enriching {bgEnrichProgress.current}/{bgEnrichProgress.total} expressions...
+            </div>
+            <div style={{ height: 4, background: "rgba(255,255,255,0.08)", borderRadius: 2, overflow: "hidden" }}>
+              <div style={{
+                height: "100%", borderRadius: 2,
+                width: `${bgEnrichProgress.total > 0 ? (bgEnrichProgress.current / bgEnrichProgress.total) * 100 : 0}%`,
+                background: "linear-gradient(90deg, #6366f1, #8b5cf6)",
+                transition: "width 0.3s",
+              }} />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Tabs */}
       <div style={styles.tabRow}>
@@ -624,6 +654,7 @@ export default function LexiconScreen({ user, setCurrentScreen }) {
         <CaptureModal
           onClose={() => setShowCapture(false)}
           onSave={handleSave}
+          onBulkSave={onBulkSave}
         />
       )}
 

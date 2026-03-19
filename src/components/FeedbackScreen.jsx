@@ -4,6 +4,10 @@ import { db } from "../lib/firebase.js";
 import { getRankFromXP } from "../hooks/useProgress.js";
 import { buildAndSaveCoachingProfile } from "../lib/coachingProfile.js";
 import { analyseTranscript } from "../hooks/useRealTimeAnalysis.js";
+import { cancelSpeech, speakOpponentLine } from "../lib/speechSynthesis.js";
+import { enrichExpression, generateEliteVersion } from "../lib/openrouter.js";
+import { startRecognition } from "../lib/speechRecognition.js";
+import { serverTimestamp } from "firebase/firestore";
 
 // Keep localStorage cache in sync so HomeScreen loads instantly next time
 function updateProfileCache(uid, updates) {
@@ -163,12 +167,23 @@ export default function FeedbackScreen({ user, sessionData, opponent, setCurrent
   const hasSaved = useRef(false);
   const [savedPhrases, setSavedPhrases] = useState({});
 
+  // Highlight-to-lexicon
+  const [selectedFeedbackText, setSelectedFeedbackText] = useState("");
+  const [feedbackSelectionPos, setFeedbackSelectionPos] = useState(null);
+  const [savingHighlight, setSavingHighlight] = useState(false);
+  const [highlightSaved, setHighlightSaved] = useState(false);
+
+  // Shadowing / echo mode
+  const [eliteResponse, setEliteResponse] = useState("");
+  const [generatingElite, setGeneratingElite] = useState(false);
+  const [isPlayingElite, setIsPlayingElite] = useState(false);
+  const [echoRecording, setEchoRecording] = useState(false);
+  const echoRecognitionRef = useRef(null);
+
   async function saveToLexicon(phrase) {
     if (!phrase || savedPhrases[phrase]) return;
     setSavedPhrases(prev => ({ ...prev, [phrase]: "saving" }));
     try {
-      const { enrichExpression } = await import("../lib/openrouter.js");
-      const { serverTimestamp } = await import("firebase/firestore");
       const enriched = await enrichExpression(phrase);
       await addDoc(collection(db, "users", user.uid, "lexicon"), {
         text: phrase,
@@ -183,6 +198,68 @@ export default function FeedbackScreen({ user, sessionData, opponent, setCurrent
       console.error("Save to lexicon error:", err);
       setSavedPhrases(prev => ({ ...prev, [phrase]: null }));
     }
+  }
+
+  // Highlight-to-lexicon handler
+  function handleFeedbackSelection() {
+    const selection = window.getSelection();
+    const text = selection?.toString().trim();
+    if (text && text.length > 2 && text.length < 200) {
+      const range = selection.getRangeAt(0);
+      const rect = range.getBoundingClientRect();
+      setSelectedFeedbackText(text);
+      setFeedbackSelectionPos({ x: rect.left + rect.width / 2, y: rect.top - 8 });
+    } else {
+      setSelectedFeedbackText("");
+      setFeedbackSelectionPos(null);
+    }
+  }
+
+  // Shadowing functions
+  async function generateEliteResponse() {
+    if (!sd?.transcript) return;
+    setGeneratingElite(true);
+    try {
+      const elite = await generateEliteVersion(sd.transcript, sd.scenarioText, opponent?.name || "PM");
+      setEliteResponse(elite || "Unable to generate elite response. Try again.");
+    } catch {
+      setEliteResponse("Unable to generate elite response. Try again.");
+    } finally {
+      setGeneratingElite(false);
+    }
+  }
+
+  async function playEliteResponse() {
+    if (isPlayingElite) {
+      cancelSpeech();
+      setIsPlayingElite(false);
+      return;
+    }
+    try {
+      speakOpponentLine(eliteResponse, opponent?.id || "priya", {}, () => {
+        setIsPlayingElite(false);
+      });
+      setIsPlayingElite(true);
+    } catch {
+      setIsPlayingElite(false);
+    }
+  }
+
+  async function startEchoRecording() {
+    try {
+      setEchoRecording(true);
+      echoRecognitionRef.current = startRecognition(
+        () => {},
+        () => { setEchoRecording(false); }
+      );
+    } catch {
+      setEchoRecording(false);
+    }
+  }
+
+  function stopEchoRecording() {
+    echoRecognitionRef.current?.stop?.();
+    setEchoRecording(false);
   }
 
   const sd = sessionData;
@@ -250,6 +327,17 @@ export default function FeedbackScreen({ user, sessionData, opponent, setCurrent
             createdAt: new Date().toISOString(),
           });
         }
+        // Update stakeholder trust cache
+        try {
+          const trustKey = `fluentpm_trust_${user.uid}`;
+          const trust = JSON.parse(localStorage.getItem(trustKey) || "{}");
+          const oppId = sd.opponentId;
+          if (oppId && sd.score) {
+            trust[oppId] = [...(trust[oppId] || []), sd.score].slice(-10); // keep last 10
+            localStorage.setItem(trustKey, JSON.stringify(trust));
+          }
+        } catch {}
+
       } catch (err) {
         console.error("Error saving session:", err);
       }
@@ -291,7 +379,7 @@ export default function FeedbackScreen({ user, sessionData, opponent, setCurrent
       <ScoreHero score={sd.score} xp={sd.xp} structureScore={sd.structureScore} />
 
       {/* Self-Confidence Rating */}
-      <div style={styles.content}>
+      <div style={styles.content} onMouseUp={handleFeedbackSelection} onTouchEnd={handleFeedbackSelection}>
         <SectionCard accentColor="#f59e0b">
           <SectionLabel color="#f59e0b">How confident did you feel?</SectionLabel>
           <StarRating value={selfRating} onChange={setSelfRating} />
@@ -461,6 +549,78 @@ export default function FeedbackScreen({ user, sessionData, opponent, setCurrent
           </SectionCard>
         )}
 
+        {/* THINKING PATTERN DETECTED — cognitive load */}
+        {sd.cognitiveLoadPattern && sd.cognitiveLoadPattern !== "none" && sd.cognitiveLoadDetail && sd.cognitiveLoadDetail !== "none" && (
+          <SectionCard accentColor="#06b6d4">
+            <SectionLabel color="#06b6d4">THINKING PATTERN DETECTED</SectionLabel>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+              <span style={{
+                fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 20,
+                background: "rgba(6,182,212,0.12)", color: "#06b6d4", textTransform: "uppercase",
+              }}>
+                {sd.cognitiveLoadPattern.replace(/_/g, " ")}
+              </span>
+            </div>
+            <p style={styles.bodyText}>{sd.cognitiveLoadDetail}</p>
+          </SectionCard>
+        )}
+
+        {/* SHADOW THIS RESPONSE — shadowing / echo mode */}
+        <SectionCard accentColor="#8b5cf6" style={{ background: "rgba(139,92,246,0.06)" }}>
+          <SectionLabel color="#8b5cf6">SHADOW THIS RESPONSE</SectionLabel>
+          <p style={{ ...styles.bodyText, marginBottom: 14 }}>
+            Hear an elite version of your answer. Then echo it back to lock in the intonation.
+          </p>
+          {!eliteResponse ? (
+            <button
+              onClick={generateEliteResponse}
+              disabled={generatingElite}
+              style={{
+                background: generatingElite ? "rgba(139,92,246,0.1)" : "rgba(139,92,246,0.2)",
+                border: "1px solid rgba(139,92,246,0.3)", borderRadius: 10,
+                color: "#c4b5fd", fontSize: 14, fontWeight: 600, padding: "10px 16px",
+                cursor: generatingElite ? "default" : "pointer", width: "100%",
+              }}
+            >
+              {generatingElite ? "Generating Elite Version..." : "🎧 Play Elite Response"}
+            </button>
+          ) : (
+            <div>
+              <div style={{
+                background: "rgba(139,92,246,0.08)", border: "1px solid rgba(139,92,246,0.2)",
+                borderRadius: 10, padding: "12px 14px", marginBottom: 12,
+                fontSize: 14, color: "#c4b5fd", lineHeight: 1.65, fontStyle: "italic",
+              }}>
+                "{eliteResponse}"
+              </div>
+              <div style={{ display: "flex", gap: 10 }}>
+                <button
+                  onClick={playEliteResponse}
+                  style={{
+                    flex: 1, padding: "10px", background: "rgba(139,92,246,0.2)",
+                    border: "1px solid rgba(139,92,246,0.3)", borderRadius: 10,
+                    color: "#c4b5fd", fontSize: 13, fontWeight: 600, cursor: "pointer",
+                  }}
+                >
+                  {isPlayingElite ? "▐▐ Stop" : "▶ Play Again"}
+                </button>
+                <button
+                  onClick={echoRecording ? stopEchoRecording : startEchoRecording}
+                  style={{
+                    flex: 1, padding: "10px",
+                    background: echoRecording ? "rgba(244,63,94,0.2)" : "rgba(6,182,212,0.12)",
+                    border: echoRecording ? "1px solid rgba(244,63,94,0.4)" : "1px solid rgba(6,182,212,0.25)",
+                    borderRadius: 10, color: echoRecording ? "#f43f5e" : "#06b6d4",
+                    fontSize: 13, fontWeight: 600, cursor: "pointer",
+                  }}
+                >
+                  {echoRecording ? "⏹ Stop Echo" : "🎤 Echo It"}
+                </button>
+              </div>
+            </div>
+          )}
+        </SectionCard>
+
         {/* Actions */}
         <div style={styles.actionRow}>
           <button
@@ -479,6 +639,75 @@ export default function FeedbackScreen({ user, sessionData, opponent, setCurrent
 
         <div style={{ height: 40 }} />
       </div>
+
+      {/* Highlight-to-lexicon floating button */}
+      {selectedFeedbackText && feedbackSelectionPos && !savingHighlight && !highlightSaved && (
+        <button
+          onMouseDown={async (e) => {
+            e.preventDefault();
+            setSavingHighlight(true);
+            try {
+              const enriched = await enrichExpression(selectedFeedbackText);
+              await addDoc(collection(db, "users", user.uid, "lexicon"), {
+                text: selectedFeedbackText,
+                source: "battle_feedback",
+                savedAt: serverTimestamp(),
+                enriched: enriched || {},
+                status: "new",
+                usedInBattles: 0,
+              });
+              setHighlightSaved(true);
+              setSelectedFeedbackText("");
+              setFeedbackSelectionPos(null);
+              setTimeout(() => setHighlightSaved(false), 2500);
+            } catch (err) {
+              console.error("Lexicon save error:", err);
+            } finally {
+              setSavingHighlight(false);
+            }
+          }}
+          style={{
+            position: "fixed",
+            left: Math.min(feedbackSelectionPos.x - 80, window.innerWidth - 180),
+            top: Math.max(feedbackSelectionPos.y - 44, 8),
+            zIndex: 9999,
+            background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+            color: "#fff",
+            border: "none",
+            borderRadius: 20,
+            padding: "8px 16px",
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: "pointer",
+            boxShadow: "0 4px 20px rgba(99,102,241,0.5)",
+            whiteSpace: "nowrap",
+          }}
+        >
+          📖 Save to Lexicon
+        </button>
+      )}
+
+      {/* Highlight save success toast */}
+      {highlightSaved && (
+        <div style={{
+          position: "fixed", bottom: 80, left: "50%", transform: "translateX(-50%)",
+          background: "#10b981", color: "#fff", borderRadius: 20,
+          padding: "10px 20px", fontSize: 14, fontWeight: 600, zIndex: 9999,
+          boxShadow: "0 4px 20px rgba(16,185,129,0.4)",
+        }}>
+          ✓ Saved to Lexicon
+        </div>
+      )}
+      {savingHighlight && (
+        <div style={{
+          position: "fixed", bottom: 80, left: "50%", transform: "translateX(-50%)",
+          background: "rgba(15,16,40,0.95)", border: "1px solid rgba(99,102,241,0.3)",
+          color: "#a5b4fc", borderRadius: 20,
+          padding: "10px 20px", fontSize: 14, fontWeight: 600, zIndex: 9999,
+        }}>
+          ✦ Enriching & saving...
+        </div>
+      )}
     </div>
   );
 }

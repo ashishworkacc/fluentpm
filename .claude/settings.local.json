@@ -22,7 +22,15 @@
       "Bash(npm run:*)",
       "Bash(node -e \":*)",
       "Bash(pkill -f \"vite --port 5173\")",
-      "mcp__Claude_Preview__preview_start"
+      "mcp__Claude_Preview__preview_start",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:api.github.com)",
+      "Bash(node -e \"require\\(''''docx''''\\); console.log\\(''''docx ok''''\\)\")",
+      "Bash(node /tmp/build_fluentpm_doc.js)",
+      "Bash(npm root:*)",
+      "Bash(cp /tmp/build_fluentpm_doc.js /tmp/fluentpm_doc/build.js)",
+      "Bash(node build.js)",
+      "Bash(npx vite:*)"
     ]
   }
 }

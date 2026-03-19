@@ -97,6 +97,59 @@ const glassCard = {
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
+function StakeholderTrust({ uid }) {
+  const [trustData, setTrustData] = useState([]);
+
+  useEffect(() => {
+    try {
+      const cached = JSON.parse(localStorage.getItem(`fluentpm_trust_${uid}`) || "{}");
+      if (Object.keys(cached).length > 0) {
+        const entries = Object.entries(cached).map(([opId, scores]) => ({
+          id: opId,
+          avg: Math.round(scores.reduce((a, b) => a + b, 0) / scores.length * 10) / 10,
+          count: scores.length,
+        })).sort((a, b) => b.count - a.count).slice(0, 3);
+        setTrustData(entries);
+      }
+    } catch {}
+  }, [uid]);
+
+  if (trustData.length === 0) return null;
+
+  const OPPONENT_MAP = Object.fromEntries(OPPONENTS.map(o => [o.id, o]));
+
+  return (
+    <div style={{ ...glassCard, padding: "16px 18px", marginBottom: 14 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "1px", marginBottom: 12 }}>
+        Stakeholder Trust
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {trustData.map(({ id, avg, count }) => {
+          const opp = OPPONENT_MAP[id];
+          if (!opp) return null;
+          const pct = Math.min(((avg - 4) / 6) * 100, 100);
+          const color = avg >= 7 ? "#10b981" : avg >= 5.5 ? "#f59e0b" : "#f43f5e";
+          return (
+            <div key={id} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontSize: 18, flexShrink: 0 }}>{opp.avatar}</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                  <span style={{ fontSize: 12, color: "#f1f5f9", fontWeight: 600 }}>{opp.name}</span>
+                  <span style={{ fontSize: 12, color, fontWeight: 700 }}>{avg}/10</span>
+                </div>
+                <div style={{ height: 4, background: "rgba(255,255,255,0.08)", borderRadius: 2 }}>
+                  <div style={{ height: "100%", width: `${pct}%`, background: color, borderRadius: 2, transition: "width 0.5s" }} />
+                </div>
+              </div>
+              <span style={{ fontSize: 10, color: "#475569", flexShrink: 0 }}>{count}×</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function XPBar({ xp, progress, nextRank, xpNeeded }) {
   return (
     <div style={styles.xpBarContainer}>
@@ -374,6 +427,9 @@ export default function HomeScreen({ user, setCurrentScreen, setPreBattleData, s
           xpNeeded={progress.nextRankInfo.xpNeeded}
         />
       </div>
+
+      {/* Stakeholder Trust */}
+      <StakeholderTrust uid={user.uid} />
 
       {/* Rank Hero Card */}
       <RankHeroCard

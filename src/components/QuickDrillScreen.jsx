@@ -271,16 +271,18 @@ export default function QuickDrillScreen({ user, setCurrentScreen }) {
 
   if (phase === "countdown") {
     return (
-      <div style={styles.centeredContainer}>
-        <div style={{ ...glassCard, padding: "24px 28px", textAlign: "center", maxWidth: 440, margin: "0 20px" }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: 12 }}>
-            Your question
+      <div style={styles.container}>
+        <div style={{ ...glassCard, padding: "20px 22px", marginBottom: 20 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "1px", marginBottom: 10 }}>
+            YOUR QUESTION
           </div>
-          <div style={{ fontSize: 17, fontWeight: 700, color: "#f1f5f9", lineHeight: 1.6, marginBottom: 20 }}>
+          <div style={{ fontSize: 17, fontWeight: 700, color: "#f1f5f9", lineHeight: 1.6 }}>
             {question}
           </div>
-          <div style={{ fontSize: 48, fontWeight: 800, color: "#6366f1", lineHeight: 1 }}>{countdown}</div>
-          <div style={{ fontSize: 13, color: "#64748b", marginTop: 8 }}>Mic starts automatically</div>
+        </div>
+        <div style={{ textAlign: "center", paddingTop: 20 }}>
+          <div style={{ fontSize: 72, fontWeight: 800, color: "#6366f1", lineHeight: 1, marginBottom: 12 }}>{countdown}</div>
+          <div style={{ fontSize: 14, color: "#64748b" }}>Mic starts automatically</div>
         </div>
       </div>
     );
@@ -292,8 +294,11 @@ export default function QuickDrillScreen({ user, setCurrentScreen }) {
     return (
       <div style={styles.container}>
         <div style={{ marginBottom: 16 }}>
-          <div style={{ ...glassCard, padding: "16px 18px", marginBottom: 12 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: "#f1f5f9", lineHeight: 1.6 }}>{question}</div>
+          <div style={{ ...glassCard, padding: "16px 18px", marginBottom: 12, position: "sticky", top: 0, zIndex: 10 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "1px", marginBottom: 8 }}>
+              YOUR QUESTION
+            </div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "#f1f5f9", lineHeight: 1.6 }}>{question}</div>
           </div>
 
           {/* Timer bar */}

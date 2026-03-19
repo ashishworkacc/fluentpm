@@ -27,6 +27,8 @@ export default function PreBattleScreen({
 }) {
   const [outline, setOutline] = useState("");
   const [outlineOpen, setOutlineOpen] = useState(false);
+  const [showDryRun, setShowDryRun] = useState(false);
+  const [dryRunScenario, setDryRunScenario] = useState("");
 
   if (!opponent || !scenario) {
     return (
@@ -40,7 +42,14 @@ export default function PreBattleScreen({
   }
 
   function handleEnterArena() {
-    setBattleData({ opponent, scenario, outline });
+    const effectiveScenario = dryRunScenario.trim() ? {
+      id: "dry_run_" + Date.now(),
+      text: dryRunScenario.trim(),
+      situationType: "general",
+      difficulty: "medium",
+      suggestedFramework: null,
+    } : scenario;
+    setBattleData({ opponent, scenario: effectiveScenario, outline });
     setCurrentScreen("battle");
   }
 
@@ -130,6 +139,40 @@ export default function PreBattleScreen({
                 rows={6}
                 style={styles.outlineTextarea}
               />
+            </div>
+          )}
+        </div>
+
+        {/* Dry Run — paste your own scenario */}
+        <div style={{ marginTop: 4, marginBottom: 16 }}>
+          <button
+            onClick={() => setShowDryRun(v => !v)}
+            style={{
+              background: "none", border: "none", color: "#64748b",
+              fontSize: 13, cursor: "pointer", padding: 0,
+              textDecoration: "underline", textDecorationStyle: "dashed",
+            }}
+          >
+            {showDryRun ? "▲ Hide" : "▼ Paste my own scenario"}
+          </button>
+          {showDryRun && (
+            <div style={{ marginTop: 12 }}>
+              <textarea
+                value={dryRunScenario}
+                onChange={e => setDryRunScenario(e.target.value)}
+                placeholder="Describe a real situation from your work you want to practice... e.g. 'My VP just questioned my roadmap prioritization in front of the team'"
+                rows={3}
+                style={{
+                  width: "100%", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)",
+                  borderRadius: 12, padding: "12px 14px", color: "#f1f5f9", fontSize: 14, lineHeight: 1.6,
+                  resize: "none", outline: "none", fontFamily: "inherit", boxSizing: "border-box",
+                }}
+              />
+              {dryRunScenario.trim() && (
+                <div style={{ fontSize: 12, color: "#818cf8", marginTop: 6 }}>
+                  Will use your scenario instead of today's challenge
+                </div>
+              )}
             </div>
           )}
         </div>

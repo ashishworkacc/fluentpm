@@ -96,6 +96,12 @@ STRUCTURE_SCORE is 1–5 (NOT 1–10):
 4 = Good — clear structure with opening and closing
 5 = Excellent — textbook structure, framework applied correctly
 
+COGNITIVE LOAD ANALYSIS — observe the transcript for:
+- TRANSLATION_MOMENT: Hesitation or filler before technical/English nouns (suggests translating from native language)
+- PERFECT_WORD_SEARCH: Fillers before high-level verbs like "orchestrate", "leverage", "facilitate" (searching for the right word)
+- HIERARCHY_FREEZE: Fluency drops after pushback or difficult follow-up questions (anxiety-triggered freeze)
+- Report the dominant pattern, or "none" if response was fluent throughout.
+
 FEEDBACK BLOCK FORMAT — output this EXACTLY after your Turn 3 reply:
 
 ###FEEDBACK###
@@ -116,6 +122,8 @@ FRAMEWORK_FIT: [1-5 if a framework was suggested, null if not]
 FRAMEWORK_TIP: [one sentence on how the framework was or wasn't used; "none" if no framework]
 NATURALNESS_FLAG: [phrase from user's transcript] | [Indian English | Bookish | Corporate Jargon] | [natural alternative — or "none" if no flags]
 (repeat NATURALNESS_FLAG line for each flag, or write NATURALNESS_FLAG: none if there are none)
+COGNITIVE_LOAD_PATTERN: [none | translation_moment | perfect_word_search | hierarchy_freeze | multiple]
+COGNITIVE_LOAD_DETAIL: [one sentence describing what was observed — e.g. "You hesitated before 'prioritization' suggesting translation from Hindi" — or "none" if no pattern]
 ###END###`;
 }
 
@@ -209,6 +217,9 @@ export function parseFeedbackBlock(text) {
 
   const naturalnessFlagsCount = naturalnessFlagsDetails.length;
 
+  const cognitiveLoadPattern = extract("COGNITIVE_LOAD_PATTERN");
+  const cognitiveLoadDetail = extract("COGNITIVE_LOAD_DETAIL");
+
   return {
     score,
     xp,
@@ -227,6 +238,8 @@ export function parseFeedbackBlock(text) {
     frameworkTip: frameworkTip === "none" ? "" : frameworkTip,
     naturalnessFlagsDetails,
     naturalnessFlagsCount,
+    cognitiveLoadPattern: cognitiveLoadPattern || "none",
+    cognitiveLoadDetail: cognitiveLoadDetail || "none",
   };
 }
 
@@ -619,6 +632,47 @@ Return ONLY valid JSON:
   "naturalnessFlagged": "the most unnatural phrase they used, or empty string",
   "naturalAlternative": "how a fluent speaker would say that, or empty string"
 }`;
+}
+
+// ── Elite Version Generator ───────────────────────────────────────────────────
+
+export async function generateEliteVersion(userTranscript, scenarioText, opponentName) {
+  const prompt = `You are a communication coach. Rewrite the following PM's answer to be elite-level: crisp, structured, confident, natural.
+
+Scenario: "${scenarioText}"
+Original answer: "${userTranscript}"
+
+Rules:
+- Keep the same core content and intent
+- Use the PREP or CAR framework naturally
+- Remove fillers, vague phrases, Indian English patterns
+- Make it sound natural and conversational, not robotic
+- Max 4 sentences. First sentence must be a strong opener.
+
+Return ONLY the rewritten response. No explanation. No quotes around it.`;
+
+  try {
+    const res = await fetch(OPENROUTER_API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${getApiKey()}`,
+        "HTTP-Referer": window.location.origin,
+        "X-Title": "FluentPM",
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.5,
+        max_tokens: 200,
+      }),
+    });
+    if (!res.ok) throw new Error("API error");
+    const data = await res.json();
+    return data.choices?.[0]?.message?.content?.trim() || "";
+  } catch {
+    return "";
+  }
 }
 
 export async function scoreLightningRound(

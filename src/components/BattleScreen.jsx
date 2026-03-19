@@ -192,6 +192,13 @@ export default function BattleScreen({
   const [isCorrectingTranscript, setIsCorrectingTranscript] = useState(false);
   const [showSkipBtn, setShowSkipBtn] = useState(false);
 
+  // Finalizing feedback state
+  const [isFinalizingFeedback, setIsFinalizingFeedback] = useState(false);
+
+  // Interruption mechanic
+  const [interruptionActive, setInterruptionActive] = useState(false);
+  const [interruptionMsg, setInterruptionMsg] = useState("");
+
   // Highlight-to-lexicon
   const [selectedText, setSelectedText] = useState("");
   const [selectionPos, setSelectionPos] = useState(null); // { x, y }
@@ -227,6 +234,22 @@ export default function BattleScreen({
 
   // Cancel speech on unmount
   useEffect(() => () => cancelSpeech(), []);
+
+  // Interruption mechanic — 10% chance on turns 2 and 3
+  useEffect(() => {
+    if (micState === "idle" && currentTurn >= 1 && currentTurn < MAX_TURNS && !interruptionActive) {
+      if (Math.random() < 0.10) {
+        const msgs = [
+          "\"Wait — what did you mean by that?\"",
+          "\"Sorry to jump in — can you be more specific?\"",
+          "\"Actually, let me push back on that...\"",
+        ];
+        setInterruptionMsg(msgs[Math.floor(Math.random() * msgs.length)]);
+        setInterruptionActive(true);
+        setTimeout(() => setInterruptionActive(false), 3500);
+      }
+    }
+  }, [micState, currentTurn]);
 
   // Kick off the session: get the opponent's first line
   useEffect(() => {
@@ -426,7 +449,8 @@ export default function BattleScreen({
         setIsSpeakingFace(true);
       }
 
-      if (feedbackBlock) {
+      if (feedbackBlock && newTurn === MAX_TURNS) {
+        setIsFinalizingFeedback(true);
         setSessionComplete(true);
 
         const sessionDataObj = {
@@ -687,6 +711,19 @@ export default function BattleScreen({
           {/* Idle — mic button + text toggle */}
           {micState === "idle" && !isOpponentTyping && messages.length > 0 && (
             <div style={styles.idleMicArea}>
+              {interruptionActive && (
+                <div style={{
+                  background: "rgba(244,63,94,0.12)", border: "1px solid rgba(244,63,94,0.3)",
+                  borderRadius: 12, padding: "12px 16px", marginBottom: 12, textAlign: "center",
+                }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: "#f43f5e", marginBottom: 4 }}>
+                    ⚡ They interrupted you!
+                  </div>
+                  <div style={{ fontSize: 13, color: "#94a3b8" }}>
+                    {interruptionMsg}
+                  </div>
+                </div>
+              )}
               <div style={styles.idleRow}>
                 <div style={styles.micButtonWrapper}>
                   <button onClick={handleMicClick} style={styles.micButton}>
@@ -767,7 +804,9 @@ export default function BattleScreen({
       {sessionComplete && (
         <div style={styles.completeOverlay}>
           <div style={styles.completeSpinner} />
-          <div style={styles.completeText}>Analysing your performance...</div>
+          <div style={styles.completeText}>
+            {isFinalizingFeedback ? "Finalizing Feedback..." : "Analysing your performance..."}
+          </div>
           {showSkipBtn && (
             <button onClick={() => { pendingFeedbackRef.current = false; setCurrentScreen("feedback"); }}
               style={{ marginTop: 16, padding: "10px 24px", background: "#6366f1", color: "#fff",
