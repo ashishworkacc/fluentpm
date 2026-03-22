@@ -440,6 +440,8 @@ export default function ProgressScreen({ user, setCurrentScreen }) {
   const sessionCache = readSessionCache(user.uid);
   const [sessions, setSessions] = useState(sessionCache?.sessions || []);
   const [loading, setLoading] = useState(!sessionCache);
+  const [syncing, setSyncing] = useState(true);
+  const [fetchError, setFetchError] = useState(null);
   const [savedDebriefs, setSavedDebriefs] = useState(sessionCache?.debriefs || []);
   const [selectedDebrief, setSelectedDebrief] = useState(null);
 
@@ -451,67 +453,71 @@ export default function ProgressScreen({ user, setCurrentScreen }) {
   const [sessionsCount, setSessionsCount] = useState(cached.sessionsCount || 0);
 
   useEffect(() => {
-    const safetyTimer = setTimeout(() => setLoading(false), 8000);
-
-    async function fetchAll() {
-      try {
-        // 1. Fetch Firestore profile/main for XP, rank, streak
-        try {
-          const profileSnap = await getDoc(doc(db, "users", user.uid, "profile", "main"));
-          if (profileSnap.exists()) {
-            const p = profileSnap.data();
-            if (p.xp != null) setCurrentXP(p.xp);
-            if (p.rank) setCurrentRank(p.rank);
-            if (p.streak != null) setStreak(p.streak);
-            if (p.sessionsCount != null) setSessionsCount(p.sessionsCount);
-            // Refresh cache too
-            try {
-              const key = `fluentpm_profile_${user.uid}`;
-              const existing = JSON.parse(localStorage.getItem(key) || "{}");
-              localStorage.setItem(key, JSON.stringify({ ...existing, xp: p.xp, rank: p.rank, streak: p.streak, sessionsCount: p.sessionsCount }));
-            } catch {}
-          }
-        } catch {}
-
-        // 2. Fetch arena sessions
-        const sessionsRef = collection(db, "users", user.uid, "sessions");
-        const q = query(sessionsRef, limit(50));
-        const snap = await getDocs(q);
-        const data = snap.docs
-          .map(d => d.data())
-          .sort((a, b) => (b.savedAt || b.timestamp || "").localeCompare(a.savedAt || a.timestamp || ""))
-          .slice(0, 20);
-        setSessions(data);
-        // Update sessionsCount from real Firestore data if profile had 0
-        if (data.length > 0) setSessionsCount(prev => Math.max(prev, data.length));
-
-        // 3. Fetch interview sessions for merged debrief list
-        try {
-          const interviewRef = collection(db, "users", user.uid, "interviewSessions");
-          const iq = query(interviewRef, limit(20));
-          const isnap = await getDocs(iq);
-          const interviewData = isnap.docs.map(d => ({ ...d.data(), _type: "interview" }));
-          const battleData = data.map(d => ({ ...d, _type: "battle" }));
-          const merged = [...interviewData, ...battleData].sort((a, b) => {
-            const ta = a.timestamp || a.savedAt || "";
-            const tb = b.timestamp || b.savedAt || "";
-            return tb.localeCompare(ta);
-          }).slice(0, 30);
-          setSavedDebriefs(merged);
-          writeSessionCache(user.uid, data, merged);
-        } catch {}
-
-      } catch (err) {
-        console.warn("Failed to fetch progress data:", err.message);
-      } finally {
-        setLoading(false);
-        clearTimeout(safetyTimer);
-      }
-    }
-
     fetchAll();
-    return () => clearTimeout(safetyTimer);
   }, [user.uid]);
+
+  async function fetchAll() {
+    const safetyTimer = setTimeout(() => { setLoading(false); setSyncing(false); }, 8000);
+    setFetchError(null);
+
+    try {
+      // 1. Fetch Firestore profile/main for XP, rank, streak
+      try {
+        const profileSnap = await getDoc(doc(db, "users", user.uid, "profile", "main"));
+        if (profileSnap.exists()) {
+          const p = profileSnap.data();
+          if (p.xp != null) setCurrentXP(p.xp);
+          if (p.rank) setCurrentRank(p.rank);
+          if (p.streak != null) setStreak(p.streak);
+          if (p.sessionsCount != null) setSessionsCount(p.sessionsCount);
+          // Refresh cache too
+          try {
+            const key = `fluentpm_profile_${user.uid}`;
+            const existing = JSON.parse(localStorage.getItem(key) || "{}");
+            localStorage.setItem(key, JSON.stringify({ ...existing, xp: p.xp, rank: p.rank, streak: p.streak, sessionsCount: p.sessionsCount }));
+          } catch {}
+        }
+      } catch {}
+
+      // 2. Fetch arena sessions
+      const sessionsRef = collection(db, "users", user.uid, "sessions");
+      const q = query(sessionsRef, limit(50));
+      const snap = await getDocs(q);
+      const data = snap.docs
+        .map(d => d.data())
+        .sort((a, b) => (b.savedAt || b.timestamp || "").localeCompare(a.savedAt || a.timestamp || ""))
+        .slice(0, 20);
+      setSessions(data);
+      // Update sessionsCount from real Firestore data if profile had 0
+      if (data.length > 0) setSessionsCount(prev => Math.max(prev, data.length));
+
+      // 3. Fetch interview sessions for merged debrief list
+      try {
+        const interviewRef = collection(db, "users", user.uid, "interviewSessions");
+        const iq = query(interviewRef, limit(20));
+        const isnap = await getDocs(iq);
+        const interviewData = isnap.docs.map(d => ({ ...d.data(), _type: "interview" }));
+        const battleData = data.map(d => ({ ...d, _type: "battle" }));
+        const merged = [...interviewData, ...battleData].sort((a, b) => {
+          const ta = a.timestamp || a.savedAt || "";
+          const tb = b.timestamp || b.savedAt || "";
+          return tb.localeCompare(ta);
+        }).slice(0, 30);
+        setSavedDebriefs(merged);
+        writeSessionCache(user.uid, data, merged);
+      } catch {}
+
+    } catch (err) {
+      console.warn("Failed to fetch progress data:", err.message);
+      if (!sessionCache) {
+        setFetchError("Couldn't reach the server. Check your connection and tap Retry.");
+      }
+    } finally {
+      setLoading(false);
+      setSyncing(false);
+      clearTimeout(safetyTimer);
+    }
+  }
 
   // Compute stats from fetched sessions
   const scores = sessions.map(s => s.aiScore || s.score).filter(Boolean);
@@ -533,12 +539,41 @@ export default function ProgressScreen({ user, setCurrentScreen }) {
       {/* Header */}
       <div style={styles.pageHeader}>
         <div style={styles.pageTitle}>Progress</div>
-        {isImproving && (
-          <div style={styles.improvingBadge}>
-            📈 Improving
-          </div>
-        )}
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {syncing && (
+            <div style={{ fontSize: 11, color: "#64748b", display: "flex", alignItems: "center", gap: 5 }}>
+              <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#f59e0b", animation: "pulse 1.5s ease-in-out infinite" }} />
+              Syncing…
+            </div>
+          )}
+          {isImproving && (
+            <div style={styles.improvingBadge}>
+              📈 Improving
+            </div>
+          )}
+        </div>
       </div>
+
+      {/* Fetch error banner */}
+      {fetchError && (
+        <div style={{
+          background: "rgba(244,63,94,0.08)", border: "1px solid rgba(244,63,94,0.2)",
+          borderRadius: 12, padding: "12px 16px", marginBottom: 16,
+          display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+        }}>
+          <span style={{ fontSize: 13, color: "#fca5a5", lineHeight: 1.5 }}>{fetchError}</span>
+          <button
+            onClick={() => { setFetchError(null); setSyncing(true); setLoading(true); fetchAll(); }}
+            style={{
+              flexShrink: 0, padding: "6px 14px", background: "rgba(244,63,94,0.15)",
+              border: "1px solid rgba(244,63,94,0.3)", borderRadius: 8,
+              color: "#f43f5e", fontSize: 12, fontWeight: 700, cursor: "pointer",
+            }}
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       {/* Stats Row — 2x2 grid */}
       <div style={styles.statsGrid}>

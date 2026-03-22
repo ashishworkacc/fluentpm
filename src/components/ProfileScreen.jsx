@@ -8,18 +8,35 @@ const glassCard = {
   borderRadius: 18,
 };
 
+// ── Profile-level session cache (5-min TTL) ───────────────────────────────────
+const PROF_CACHE_TTL = 5 * 60 * 1000;
+function readProfCache(uid) {
+  try {
+    const raw = JSON.parse(localStorage.getItem(`fluentpm_prof_${uid}`) || "null");
+    if (raw && Date.now() - raw.ts < PROF_CACHE_TTL) return raw;
+  } catch {}
+  return null;
+}
+function writeProfCache(uid, data) {
+  try { localStorage.setItem(`fluentpm_prof_${uid}`, JSON.stringify({ ...data, ts: Date.now() })); } catch {}
+}
+
 export default function ProfileScreen({ user, setCurrentScreen }) {
-  const [sessions, setSessions] = useState([]);
-  const [interviews, setInterviews] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [firestoreXP, setFirestoreXP] = useState(null);
-  const [firestoreSessionsCount, setFirestoreSessionsCount] = useState(null);
+  const profCache = readProfCache(user.uid);
+  const [sessions, setSessions] = useState(profCache?.sessions || []);
+  const [interviews, setInterviews] = useState(profCache?.interviews || []);
+  const [loading, setLoading] = useState(!profCache);
+  const [syncing, setSyncing] = useState(true); // always syncing until Firestore responds
+  const [fetchError, setFetchError] = useState(null);
+  const [firestoreXP, setFirestoreXP] = useState(profCache?.xp ?? null);
+  const [firestoreSessionsCount, setFirestoreSessionsCount] = useState(profCache?.sessionsCount ?? null);
 
   useEffect(() => {
     // 5-second safety timeout — always stop loading
-    const safety = setTimeout(() => setLoading(false), 5000);
+    const safety = setTimeout(() => { setLoading(false); setSyncing(false); }, 5000);
 
     async function fetchData() {
+      setFetchError(null);
       try {
         // Fetch profile/main for accurate XP and session count
         try {
@@ -35,13 +52,25 @@ export default function ProfileScreen({ user, setCurrentScreen }) {
           getDocs(query(collection(db, "users", user.uid, "sessions"), limit(50))),
           getDocs(query(collection(db, "users", user.uid, "interviewSessions"), limit(20))),
         ]);
-        setSessions(sSnap.docs.map(d => d.data()).sort((a, b) => (b.savedAt || "").localeCompare(a.savedAt || "")));
-        setInterviews(iSnap.docs.map(d => d.data()).sort((a, b) => (b.savedAt || "").localeCompare(a.savedAt || "")));
+        const fetchedSessions = sSnap.docs.map(d => d.data()).sort((a, b) => (b.savedAt || "").localeCompare(a.savedAt || ""));
+        const fetchedInterviews = iSnap.docs.map(d => d.data()).sort((a, b) => (b.savedAt || "").localeCompare(a.savedAt || ""));
+        setSessions(fetchedSessions);
+        setInterviews(fetchedInterviews);
+        writeProfCache(user.uid, {
+          sessions: fetchedSessions,
+          interviews: fetchedInterviews,
+          xp: firestoreXP,
+          sessionsCount: firestoreSessionsCount,
+        });
       } catch (err) {
         console.warn("ProfileScreen fetch error:", err.message);
+        if (!profCache) {
+          setFetchError("Couldn't reach the server. Check your connection and tap Retry.");
+        }
       } finally {
         clearTimeout(safety);
         setLoading(false);
+        setSyncing(false);
       }
     }
     fetchData();
@@ -91,13 +120,40 @@ export default function ProfileScreen({ user, setCurrentScreen }) {
         <div style={{ width: 52, height: 52, borderRadius: "50%", background: "linear-gradient(135deg, #6366f1, #8b5cf6)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, fontWeight: 700, color: "#fff", flexShrink: 0 }}>
           {user.displayName?.[0] || user.email?.[0] || "?"}
         </div>
-        <div>
+        <div style={{ flex: 1 }}>
           <div style={{ fontSize: 18, fontWeight: 800, color: "#f1f5f9" }}>{user.displayName || "PM Candidate"}</div>
           <div style={{ fontSize: 13, color: "#64748b" }}>{user.email}</div>
         </div>
+        {syncing && (
+          <div style={{ fontSize: 11, color: "#64748b", display: "flex", alignItems: "center", gap: 5 }}>
+            <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#f59e0b", animation: "pulse 1.5s ease-in-out infinite" }} />
+            Syncing…
+          </div>
+        )}
       </div>
 
-      {loading ? (
+      {/* Fetch error banner */}
+      {fetchError && (
+        <div style={{
+          background: "rgba(244,63,94,0.08)", border: "1px solid rgba(244,63,94,0.2)",
+          borderRadius: 12, padding: "12px 16px", marginBottom: 20,
+          display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+        }}>
+          <span style={{ fontSize: 13, color: "#fca5a5", lineHeight: 1.5 }}>{fetchError}</span>
+          <button
+            onClick={() => { setFetchError(null); setSyncing(true); setLoading(true); }}
+            style={{
+              flexShrink: 0, padding: "6px 14px", background: "rgba(244,63,94,0.15)",
+              border: "1px solid rgba(244,63,94,0.3)", borderRadius: 8,
+              color: "#f43f5e", fontSize: 12, fontWeight: 700, cursor: "pointer",
+            }}
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      {loading && sessions.length === 0 ? (
         <div style={{ textAlign: "center", padding: 60, color: "#475569" }}>Loading your profile...</div>
       ) : (
         <>
@@ -206,6 +262,23 @@ export default function ProfileScreen({ user, setCurrentScreen }) {
             >
               Start Practising →
             </button>
+          </div>
+
+          {/* Data safety note */}
+          <div style={{
+            marginTop: 24,
+            padding: "12px 16px",
+            background: "rgba(16,185,129,0.04)",
+            border: "1px solid rgba(16,185,129,0.12)",
+            borderRadius: 12,
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 10,
+          }}>
+            <span style={{ fontSize: 16, flexShrink: 0 }}>🔒</span>
+            <div style={{ fontSize: 12, color: "#64748b", lineHeight: 1.6 }}>
+              Your data is stored securely in Firebase — updating the app or deploying new code never affects your history, scores, or question bank.
+            </div>
           </div>
         </>
       )}
