@@ -351,7 +351,8 @@ export default function InterviewScreen({
         setIsSpeakingFace(true);
       }
 
-      if (interviewFeedback) {
+      // Only process feedback if we have at least 3 turns (prevents AI from ending too early)
+      if (interviewFeedback && newTurn >= 3) {
         setSessionComplete(true);
 
         const sessionDoc = {
@@ -395,7 +396,7 @@ export default function InterviewScreen({
         if (!cleanReply || voiceMuted) {
           setTimeout(() => setCurrentScreen("interviewFeedback"), 1000);
         }
-      } else {
+      } else if (!interviewFeedback || newTurn < 3) {
         setMicState("idle");
       }
     } catch (err) {

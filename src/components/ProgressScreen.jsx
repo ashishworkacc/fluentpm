@@ -169,6 +169,28 @@ function readCache(uid) {
   } catch { return null; }
 }
 
+const SESSION_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+function readSessionCache(uid) {
+  try {
+    const raw = localStorage.getItem(`fluentpm_sessions_${uid}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (Date.now() - (parsed.ts || 0) > SESSION_CACHE_TTL) return null;
+    return parsed;
+  } catch { return null; }
+}
+
+function writeSessionCache(uid, sessions, debriefs) {
+  try {
+    localStorage.setItem(`fluentpm_sessions_${uid}`, JSON.stringify({
+      sessions,
+      debriefs,
+      ts: Date.now(),
+    }));
+  } catch {}
+}
+
 const glassCard = {
   background: "rgba(15,16,40,0.82)",
   border: "1px solid rgba(255,255,255,0.08)",
@@ -414,9 +436,11 @@ function RankRoadmap({ currentRank, currentXP }) {
 // ── Main Component ─────────────────────────────────────────────────────────────
 
 export default function ProgressScreen({ user, setCurrentScreen }) {
-  const [sessions, setSessions] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [savedDebriefs, setSavedDebriefs] = useState([]);
+  // Load session cache immediately to show data before Firestore responds
+  const sessionCache = readSessionCache(user.uid);
+  const [sessions, setSessions] = useState(sessionCache?.sessions || []);
+  const [loading, setLoading] = useState(!sessionCache);
+  const [savedDebriefs, setSavedDebriefs] = useState(sessionCache?.debriefs || []);
   const [selectedDebrief, setSelectedDebrief] = useState(null);
 
   // Profile stats — start from cache, upgrade from Firestore
@@ -474,6 +498,7 @@ export default function ProgressScreen({ user, setCurrentScreen }) {
             return tb.localeCompare(ta);
           }).slice(0, 30);
           setSavedDebriefs(merged);
+          writeSessionCache(user.uid, data, merged);
         } catch {}
 
       } catch (err) {

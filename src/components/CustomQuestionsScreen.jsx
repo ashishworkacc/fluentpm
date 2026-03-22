@@ -5,7 +5,6 @@ import {
   getDocs,
   deleteDoc,
   doc,
-  serverTimestamp,
   query,
   limit,
 } from "firebase/firestore";
@@ -109,8 +108,8 @@ export default function CustomQuestionsScreen({ user, setCurrentScreen, setCusto
         .map(d => ({ id: d.id, ...d.data() }))
         // sort client-side by addedAt descending
         .sort((a, b) => {
-          const ta = a.addedAt?.seconds || a.addedAt || 0;
-          const tb = b.addedAt?.seconds || b.addedAt || 0;
+          const ta = a.addedAt?.seconds ? a.addedAt.seconds * 1000 : (typeof a.addedAt === "string" ? new Date(a.addedAt).getTime() : 0);
+          const tb = b.addedAt?.seconds ? b.addedAt.seconds * 1000 : (typeof b.addedAt === "string" ? new Date(b.addedAt).getTime() : 0);
           return tb - ta;
         });
       setQuestions(data);
@@ -135,7 +134,7 @@ export default function CustomQuestionsScreen({ user, setCurrentScreen, setCusto
         addDoc(ref, {
           text,
           source: "custom",
-          addedAt: serverTimestamp(),
+          addedAt: new Date().toISOString(),
           attempts: 0,
           bestScore: null,
           lastAttempted: null,

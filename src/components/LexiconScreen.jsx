@@ -4,9 +4,10 @@ import {
   getDocs,
   addDoc,
   updateDoc,
+  deleteDoc,
   doc,
   query,
-  orderBy,
+  limit,
 } from "firebase/firestore";
 import { db } from "../lib/firebase.js";
 import { enrichExpression } from "../lib/openrouter.js";
@@ -303,7 +304,7 @@ function ToneTab({ variants }) {
   );
 }
 
-function ExpressionCard({ item, onMarkMastered }) {
+function ExpressionCard({ item, onMarkMastered, onDelete }) {
   const [expanded, setExpanded] = useState(false);
   const naturalness = item.enriched?.naturalness;
   const difficulty = getDifficultyFromNaturalness(naturalness?.rating);
@@ -440,14 +441,32 @@ function ExpressionCard({ item, onMarkMastered }) {
           )}
 
           {/* Actions */}
-          {item.status !== "mastered" && (
+          <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+            {item.status !== "mastered" && (
+              <button
+                onClick={() => onMarkMastered(item.id)}
+                style={{ ...styles.masterBtn, marginTop: 0, flex: 1 }}
+              >
+                Mark as Mastered ✓
+              </button>
+            )}
             <button
-              onClick={() => onMarkMastered(item.id)}
-              style={styles.masterBtn}
+              onClick={() => onDelete(item.id)}
+              style={{
+                padding: "10px 14px",
+                background: "rgba(244,63,94,0.08)",
+                border: "1px solid rgba(244,63,94,0.2)",
+                borderRadius: 10,
+                color: "#f43f5e",
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: "pointer",
+                flexShrink: 0,
+              }}
             >
-              Mark as Mastered ✓
+              Delete
             </button>
-          )}
+          </div>
         </div>
       )}
     </div>
@@ -471,9 +490,15 @@ export default function LexiconScreen({ user, setCurrentScreen }) {
   async function fetchLexicon() {
     try {
       const ref = collection(db, "users", user.uid, "lexicon");
-      const q = query(ref, orderBy("savedAt", "desc"));
+      const q = query(ref, limit(200));
       const snap = await getDocs(q);
-      const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const data = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => {
+          const ta = a.savedAt ? new Date(a.savedAt).getTime() : 0;
+          const tb = b.savedAt ? new Date(b.savedAt).getTime() : 0;
+          return tb - ta;
+        });
       setItems(data);
     } catch (err) {
       console.warn("Failed to fetch lexicon:", err.message);
@@ -546,6 +571,15 @@ export default function LexiconScreen({ user, setCurrentScreen }) {
     const ref = doc(db, "users", user.uid, "lexicon", itemId);
     await updateDoc(ref, { status: "mastered" });
     setItems(prev => prev.map(it => it.id === itemId ? { ...it, status: "mastered" } : it));
+  }
+
+  async function handleDelete(itemId) {
+    try {
+      await deleteDoc(doc(db, "users", user.uid, "lexicon", itemId));
+      setItems(prev => prev.filter(it => it.id !== itemId));
+    } catch (err) {
+      console.error("Delete lexicon item error:", err);
+    }
   }
 
   async function addPhraseToLexicon(phraseText) {
@@ -695,7 +729,7 @@ export default function LexiconScreen({ user, setCurrentScreen }) {
             </div>
           ) : (
             filteredItems.map(item => (
-              <ExpressionCard key={item.id} item={item} onMarkMastered={handleMarkMastered} />
+              <ExpressionCard key={item.id} item={item} onMarkMastered={handleMarkMastered} onDelete={handleDelete} />
             ))
           )}
         </>

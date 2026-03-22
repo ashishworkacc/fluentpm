@@ -254,6 +254,7 @@ export default function LightningRoundScreen({ user, setCurrentScreen }) {
   }
 
   function handleStopMic() {
+    clearInterval(timerRef.current);
     recognitionRef.current?.stop?.();
     setMicState("idle");
   }

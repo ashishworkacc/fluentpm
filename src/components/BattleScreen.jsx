@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef } from "react";
-import { sendBattleMessage, correctTranscript } from "../lib/openrouter.js";
+import { sendBattleMessage, correctTranscript, enrichExpression } from "../lib/openrouter.js";
 import { startRecognition } from "../lib/speechRecognition.js";
 import { analyseTranscript } from "../hooks/useRealTimeAnalysis.js";
 import TalkingFace from "./TalkingFace.jsx";
 import { cancelSpeech } from "../lib/speechSynthesis.js";
+import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { db } from "../lib/firebase.js";
 
 const MAX_TURNS = 3;
 
@@ -238,7 +240,7 @@ export default function BattleScreen({
 
   // Interruption mechanic — 10% chance on turns 2 and 3
   useEffect(() => {
-    if (micState === "idle" && currentTurn >= 1 && currentTurn < MAX_TURNS && !interruptionActive) {
+    if (micState === "idle" && !isSpeakingFace && currentTurn >= 1 && currentTurn < MAX_TURNS && !interruptionActive) {
       if (Math.random() < 0.10) {
         const msgs = [
           "\"Wait — what did you mean by that?\"",
@@ -684,6 +686,22 @@ export default function BattleScreen({
         </div>
       )}
 
+      {/* Pinned scenario card */}
+      <div style={{
+        background: "rgba(99,102,241,0.07)",
+        border: "1px solid rgba(99,102,241,0.15)",
+        borderRadius: 0,
+        padding: "10px 20px",
+        flexShrink: 0,
+      }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color: "#6366f1", textTransform: "uppercase", letterSpacing: "1px", marginBottom: 4 }}>
+          YOUR CHALLENGE
+        </div>
+        <div style={{ fontSize: 13, color: "#cbd5e1", lineHeight: 1.5 }}>
+          {scenario.text}
+        </div>
+      </div>
+
       {/* Messages — scrollable */}
       <div
         style={styles.messagesContainer}
@@ -770,7 +788,7 @@ export default function BattleScreen({
           )}
 
           {/* Idle — mic button + text toggle */}
-          {micState === "idle" && !isOpponentTyping && messages.length > 0 && (
+          {micState === "idle" && !isOpponentTyping && !isSpeakingFace && messages.length > 0 && (
             <div style={styles.idleMicArea}>
               {interruptionActive && (
                 <div style={{
@@ -899,17 +917,15 @@ export default function BattleScreen({
             e.preventDefault(); // prevent selection clear
             setSavingToLexicon(true);
             try {
-              const { enrichExpression } = await import("../lib/openrouter.js");
-              const { db } = await import("../lib/firebase.js");
-              const { collection, addDoc, serverTimestamp } = await import("firebase/firestore");
               const enriched = await enrichExpression(selectedText);
               await addDoc(collection(db, "users", user.uid, "lexicon"), {
-                text: selectedText,
+                expression: selectedText,
                 source: "battle",
                 savedAt: serverTimestamp(),
-                enriched: enriched || {},
+                enriched: enriched || null,
                 status: "new",
                 usedInBattles: 0,
+                lastUsedDate: null,
               });
               setLexiconSaveSuccess(true);
               setSelectedText("");
