@@ -5,11 +5,12 @@ import {
   getDocs,
   deleteDoc,
   doc,
-  query,
-  orderBy,
   serverTimestamp,
+  query,
+  limit,
 } from "firebase/firestore";
 import { db } from "../lib/firebase.js";
+import { INTERVIEWERS } from "../data/interviewers.js";
 
 const glassCard = {
   background: "rgba(15,16,40,0.82)",
@@ -17,12 +18,83 @@ const glassCard = {
   borderRadius: 16,
 };
 
+// ── Interviewer picker modal ──────────────────────────────────────────────────
+
+function InterviewerPicker({ question, onSelect, onCancel }) {
+  return (
+    <div style={{
+      position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)",
+      display: "flex", alignItems: "flex-end", justifyContent: "center",
+      zIndex: 1000, padding: "0 0 0 0",
+    }}>
+      <div style={{
+        width: "100%", maxWidth: 680,
+        background: "rgba(12,13,36,0.99)",
+        border: "1px solid rgba(255,255,255,0.1)",
+        borderRadius: "20px 20px 0 0",
+        padding: "24px 20px 40px",
+      }}>
+        <div style={{ fontSize: 16, fontWeight: 800, color: "#f1f5f9", marginBottom: 4 }}>
+          Choose your interviewer
+        </div>
+        <div style={{ fontSize: 13, color: "#64748b", marginBottom: 20 }}>
+          "{question.text.slice(0, 80)}{question.text.length > 80 ? "…" : ""}"
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {INTERVIEWERS.slice(0, 4).map(iv => (
+            <button
+              key={iv.id}
+              onClick={() => onSelect(iv)}
+              style={{
+                display: "flex", alignItems: "center", gap: 12,
+                padding: "14px 16px",
+                background: "rgba(255,255,255,0.04)",
+                border: "1px solid rgba(255,255,255,0.08)",
+                borderRadius: 12, cursor: "pointer", textAlign: "left",
+                width: "100%",
+              }}
+            >
+              <span style={{ fontSize: 28, flexShrink: 0 }}>{iv.avatar}</span>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: "#f1f5f9" }}>{iv.name}</div>
+                <div style={{ fontSize: 12, color: "#64748b" }}>{iv.role}</div>
+              </div>
+              <div style={{
+                marginLeft: "auto", flexShrink: 0,
+                fontSize: 11, fontWeight: 700, padding: "3px 10px",
+                borderRadius: 20,
+                background: iv.aggression === "high" ? "rgba(244,63,94,0.12)" : "rgba(245,158,11,0.12)",
+                color: iv.aggression === "high" ? "#f43f5e" : "#f59e0b",
+              }}>
+                {iv.aggression === "high" ? "TOUGH" : "MED"}
+              </div>
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={onCancel}
+          style={{
+            marginTop: 16, width: "100%", padding: "12px",
+            background: "transparent", border: "1px solid rgba(255,255,255,0.08)",
+            borderRadius: 12, color: "#64748b", fontSize: 13, cursor: "pointer",
+          }}
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Main Component ────────────────────────────────────────────────────────────
+
 export default function CustomQuestionsScreen({ user, setCurrentScreen, setCustomQuestion, setInterviewData }) {
   const [questions, setQuestions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [bulkText, setBulkText] = useState("");
   const [importing, setImporting] = useState(false);
   const [importMsg, setImportMsg] = useState("");
+  const [pickerQuestion, setPickerQuestion] = useState(null); // which question is being practiced
 
   useEffect(() => {
     fetchQuestions();
@@ -30,10 +102,18 @@ export default function CustomQuestionsScreen({ user, setCurrentScreen, setCusto
 
   async function fetchQuestions() {
     try {
+      // No orderBy — avoids needing a Firestore index
       const ref = collection(db, "users", user.uid, "customQuestions");
-      const q = query(ref, orderBy("addedAt", "desc"));
-      const snap = await getDocs(q);
-      setQuestions(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      const snap = await getDocs(query(ref, limit(100)));
+      const data = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        // sort client-side by addedAt descending
+        .sort((a, b) => {
+          const ta = a.addedAt?.seconds || a.addedAt || 0;
+          const tb = b.addedAt?.seconds || b.addedAt || 0;
+          return tb - ta;
+        });
+      setQuestions(data);
     } catch (err) {
       console.warn("Failed to fetch custom questions:", err.message);
     } finally {
@@ -45,24 +125,30 @@ export default function CustomQuestionsScreen({ user, setCurrentScreen, setCusto
     const lines = bulkText.split("\n").map(l => l.trim()).filter(Boolean).slice(0, 50);
     if (lines.length === 0) return;
     setImporting(true);
+    setImportMsg("");
+
     try {
       const ref = collection(db, "users", user.uid, "customQuestions");
-      for (const text of lines) {
-        await addDoc(ref, {
+
+      // Save all docs in parallel — don't wait sequentially (avoids UI freeze)
+      await Promise.all(lines.map(text =>
+        addDoc(ref, {
           text,
           source: "custom",
           addedAt: serverTimestamp(),
           attempts: 0,
           bestScore: null,
           lastAttempted: null,
-        });
-      }
+        })
+      ));
+
       setBulkText("");
-      setImportMsg(`Imported ${lines.length} question${lines.length !== 1 ? "s" : ""}`);
-      setTimeout(() => setImportMsg(""), 3000);
+      setImportMsg(`✓ Imported ${lines.length} question${lines.length !== 1 ? "s" : ""}`);
+      setTimeout(() => setImportMsg(""), 4000);
       await fetchQuestions();
     } catch (err) {
       console.error("Import error:", err);
+      setImportMsg("Import failed — try again");
     } finally {
       setImporting(false);
     }
@@ -77,27 +163,38 @@ export default function CustomQuestionsScreen({ user, setCurrentScreen, setCusto
     }
   }
 
-  function handlePractice(question) {
-    // Build a minimal interviewData using the custom question
+  // Step 1: show interviewer picker
+  function handlePracticeClick(question) {
+    setPickerQuestion(question);
+  }
+
+  // Step 2: interviewer chosen → launch interview directly
+  function handleInterviewerSelected(interviewer) {
+    const q = pickerQuestion;
+    setPickerQuestion(null);
+
     const customQ = {
-      id: question.id,
-      text: question.text,
-      company: "Custom",
+      id: q.id,
+      text: q.text,
+      company: interviewer.company || "Custom",
       type: "behavioral",
       isCustom: true,
-      firestoreId: question.id,
+      firestoreId: q.id,
     };
+
     if (setCustomQuestion) setCustomQuestion(customQ);
     if (setInterviewData) {
       setInterviewData({
-        interviewer: null, // Will be handled in InterviewScreen
+        interviewer,
         questionType: "behavioral",
         question: customQ,
-        company: "Custom",
+        company: interviewer.company || "Custom",
         isCustom: true,
       });
     }
-    setCurrentScreen("interviewHome");
+
+    // Go directly to interview, not interviewHome
+    setCurrentScreen("interview");
   }
 
   const bulkLineCount = bulkText.split("\n").filter(l => l.trim()).length;
@@ -140,24 +237,28 @@ export default function CustomQuestionsScreen({ user, setCurrentScreen, setCusto
             boxSizing: "border-box", marginBottom: 12,
           }}
         />
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
           <span style={{ fontSize: 12, color: "#64748b" }}>
-            {bulkLineCount > 0 ? `${Math.min(bulkLineCount, 50)} question${bulkLineCount !== 1 ? "s" : ""} to import` : ""}
+            {bulkLineCount > 0 ? `${Math.min(bulkLineCount, 50)} question${bulkLineCount !== 1 ? "s" : ""} to import` : "One question per line"}
           </span>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             {importMsg && (
-              <span style={{ fontSize: 12, color: "#10b981", fontWeight: 600 }}>✓ {importMsg}</span>
+              <span style={{ fontSize: 12, color: importMsg.includes("failed") ? "#f43f5e" : "#10b981", fontWeight: 600 }}>{importMsg}</span>
             )}
             <button
               onClick={handleBulkImport}
               disabled={importing || bulkLineCount === 0}
               style={{
-                padding: "10px 20px", background: bulkLineCount > 0 ? "linear-gradient(135deg, #6366f1, #8b5cf6)" : "rgba(255,255,255,0.06)",
-                color: bulkLineCount > 0 ? "#fff" : "#64748b", border: "none", borderRadius: 10,
-                fontSize: 13, fontWeight: 700, cursor: bulkLineCount > 0 ? "pointer" : "default",
+                padding: "10px 20px",
+                background: importing ? "rgba(255,255,255,0.08)" : bulkLineCount > 0 ? "linear-gradient(135deg, #6366f1, #8b5cf6)" : "rgba(255,255,255,0.06)",
+                color: bulkLineCount > 0 && !importing ? "#fff" : "#64748b",
+                border: "none", borderRadius: 10,
+                fontSize: 13, fontWeight: 700,
+                cursor: bulkLineCount > 0 && !importing ? "pointer" : "default",
+                minWidth: 120,
               }}
             >
-              {importing ? "Importing..." : `Import ${bulkLineCount > 0 ? bulkLineCount : ""} question${bulkLineCount !== 1 ? "s" : ""}`}
+              {importing ? `Importing ${bulkLineCount}…` : `Import${bulkLineCount > 0 ? ` ${Math.min(bulkLineCount, 50)}` : ""}`}
             </button>
           </div>
         </div>
@@ -182,11 +283,9 @@ export default function CustomQuestionsScreen({ user, setCurrentScreen, setCusto
             <div style={{ fontSize: 14, color: "#f1f5f9", lineHeight: 1.5, marginBottom: 10 }}>
               {q.text}
             </div>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
               <div style={{ display: "flex", gap: 10, fontSize: 11, color: "#64748b" }}>
-                {q.attempts > 0 && (
-                  <span>Attempted {q.attempts}×</span>
-                )}
+                {q.attempts > 0 && <span>Attempted {q.attempts}×</span>}
                 {q.bestScore && (
                   <span style={{ color: q.bestScore >= 4 ? "#10b981" : q.bestScore >= 3 ? "#f59e0b" : "#f43f5e" }}>
                     Best: {q.bestScore}/5
@@ -199,13 +298,20 @@ export default function CustomQuestionsScreen({ user, setCurrentScreen, setCusto
               <div style={{ display: "flex", gap: 8 }}>
                 <button
                   onClick={() => handleDelete(q.id)}
-                  style={{ background: "rgba(244,63,94,0.1)", border: "1px solid rgba(244,63,94,0.2)", borderRadius: 8, padding: "5px 10px", fontSize: 12, color: "#f43f5e", cursor: "pointer" }}
+                  style={{
+                    background: "rgba(244,63,94,0.1)", border: "1px solid rgba(244,63,94,0.2)",
+                    borderRadius: 8, padding: "5px 10px", fontSize: 12, color: "#f43f5e", cursor: "pointer",
+                  }}
                 >
                   Delete
                 </button>
                 <button
-                  onClick={() => handlePractice(q)}
-                  style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)", border: "none", borderRadius: 8, padding: "5px 14px", fontSize: 12, color: "#fff", fontWeight: 700, cursor: "pointer" }}
+                  onClick={() => handlePracticeClick(q)}
+                  style={{
+                    background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+                    border: "none", borderRadius: 8, padding: "5px 14px",
+                    fontSize: 12, color: "#fff", fontWeight: 700, cursor: "pointer",
+                  }}
                 >
                   Practice Now →
                 </button>
@@ -216,13 +322,22 @@ export default function CustomQuestionsScreen({ user, setCurrentScreen, setCusto
       )}
 
       <div style={{ height: 40 }} />
+
+      {/* Interviewer Picker Modal */}
+      {pickerQuestion && (
+        <InterviewerPicker
+          question={pickerQuestion}
+          onSelect={handleInterviewerSelected}
+          onCancel={() => setPickerQuestion(null)}
+        />
+      )}
     </div>
   );
 }
 
 const styles = {
   container: {
-    maxWidth: 680,
+    maxWidth: 860,
     margin: "0 auto",
     padding: "24px 20px",
     paddingBottom: 100,

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { collection, query, limit, getDocs } from "firebase/firestore";
+import { collection, query, limit, getDocs, doc, getDoc } from "firebase/firestore";
 import { db } from "../lib/firebase.js";
 
 const glassCard = {
@@ -12,24 +12,48 @@ export default function ProfileScreen({ user, setCurrentScreen }) {
   const [sessions, setSessions] = useState([]);
   const [interviews, setInterviews] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [firestoreXP, setFirestoreXP] = useState(null);
+  const [firestoreSessionsCount, setFirestoreSessionsCount] = useState(null);
 
   useEffect(() => {
+    // 5-second safety timeout — always stop loading
+    const safety = setTimeout(() => setLoading(false), 5000);
+
     async function fetchData() {
       try {
-        const sSnap = await getDocs(query(collection(db, "users", user.uid, "sessions"), limit(20)));
-        const iSnap = await getDocs(query(collection(db, "users", user.uid, "interviewSessions"), limit(20)));
+        // Fetch profile/main for accurate XP and session count
+        try {
+          const pSnap = await getDoc(doc(db, "users", user.uid, "profile", "main"));
+          if (pSnap.exists()) {
+            const p = pSnap.data();
+            if (p.xp != null) setFirestoreXP(p.xp);
+            if (p.sessionsCount != null) setFirestoreSessionsCount(p.sessionsCount);
+          }
+        } catch {}
+
+        const [sSnap, iSnap] = await Promise.all([
+          getDocs(query(collection(db, "users", user.uid, "sessions"), limit(50))),
+          getDocs(query(collection(db, "users", user.uid, "interviewSessions"), limit(20))),
+        ]);
         setSessions(sSnap.docs.map(d => d.data()).sort((a, b) => (b.savedAt || "").localeCompare(a.savedAt || "")));
         setInterviews(iSnap.docs.map(d => d.data()).sort((a, b) => (b.savedAt || "").localeCompare(a.savedAt || "")));
-      } catch {}
-      finally { setLoading(false); }
+      } catch (err) {
+        console.warn("ProfileScreen fetch error:", err.message);
+      } finally {
+        clearTimeout(safety);
+        setLoading(false);
+      }
     }
     fetchData();
+    return () => clearTimeout(safety);
   }, [user.uid]);
 
-  // Compute metrics
+  // Compute metrics — use Firestore profile data when available
   const allScores = sessions.map(s => s.aiScore || s.score).filter(Boolean);
   const avgScore = allScores.length ? allScores.reduce((a, b) => a + b, 0) / allScores.length : 0;
   const readinessScore = Math.min(Math.round((avgScore / 10) * 100), 100);
+  // Use Firestore session count if available (more accurate than array length)
+  const totalSessions = firestoreSessionsCount ?? (sessions.length + interviews.length);
 
   // Frequent mistakes: count weak phrase occurrences
   const phraseCounts = {};
@@ -55,7 +79,7 @@ export default function ProfileScreen({ user, setCurrentScreen }) {
     if (i.improve1 && !improvements.includes(i.improve1)) improvements.push(i.improve1);
   });
 
-  const totalAttempted = sessions.length + interviews.length;
+  const totalAttempted = totalSessions;
 
   const readinessColor = readinessScore >= 70 ? "#10b981" : readinessScore >= 40 ? "#f59e0b" : "#f43f5e";
   const readinessLabel = readinessScore >= 70 ? "Interview Ready" : readinessScore >= 40 ? "Getting There" : "Keep Practising";

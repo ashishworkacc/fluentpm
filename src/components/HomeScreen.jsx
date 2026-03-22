@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { doc, getDoc, setDoc, collection, getDocs, query, where, updateDoc } from "firebase/firestore";
 import { db } from "../lib/firebase.js";
 import { OPPONENTS } from "../data/opponents.js";
@@ -416,6 +416,7 @@ export default function HomeScreen({ user, setCurrentScreen, setPreBattleData, s
     daysSince >= 1;
 
   const firstName = user.displayName ? user.displayName.split(" ")[0] : "";
+  const isDesktop = typeof window !== "undefined" && window.innerWidth >= 768;
 
   return (
     <div style={styles.container}>
@@ -430,8 +431,6 @@ export default function HomeScreen({ user, setCurrentScreen, setPreBattleData, s
             <span style={styles.streakPill}>🔥 {progress.streak} day streak</span>
           )}
         </div>
-
-        {/* XP Bar */}
         <XPBar
           xp={progress.xp}
           progress={progress.nextRankInfo.progress}
@@ -443,87 +442,132 @@ export default function HomeScreen({ user, setCurrentScreen, setPreBattleData, s
       {/* Stakeholder Trust */}
       <StakeholderTrust uid={user.uid} />
 
-      {/* Rank Hero Card */}
-      <RankHeroCard
-        rankEmoji={progress.rankEmoji}
-        rankLabel={progress.rankLabel}
-        xp={progress.xp}
-        progress={progress.nextRankInfo.progress}
-        nextRank={progress.nextRankInfo.nextRank}
-        xpNeeded={progress.nextRankInfo.xpNeeded}
-        sessionsCount={progress.sessionsCount}
-      />
-
-      {/* Decay Warning */}
-      {showDecay && (
-        <DecayWarningBanner
-          daysSince={daysSince}
-          penalty={progress.rankDef.decayPenalty}
-        />
-      )}
-
-      {/* Expressions Due Card */}
-      {expressionsDueCount > 0 && (
-        <div style={{
-          ...glassCard,
-          padding: "16px 18px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginBottom: 16,
-          border: "1px solid rgba(6,182,212,0.2)",
-          background: "rgba(6,182,212,0.05)",
-        }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <span style={{ fontSize: 20 }}>📚</span>
-            <div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: "#f1f5f9" }}>
-                {expressionsDueCount} expression{expressionsDueCount !== 1 ? "s" : ""} due for practice
+      {/* Desktop 2-col layout: left = rank + decay + expressions, right = interview + lightning */}
+      {isDesktop ? (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+          {/* Left column */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <RankHeroCard
+              rankEmoji={progress.rankEmoji}
+              rankLabel={progress.rankLabel}
+              xp={progress.xp}
+              progress={progress.nextRankInfo.progress}
+              nextRank={progress.nextRankInfo.nextRank}
+              xpNeeded={progress.nextRankInfo.xpNeeded}
+              sessionsCount={progress.sessionsCount}
+            />
+            {showDecay && (
+              <DecayWarningBanner
+                daysSince={daysSince}
+                penalty={progress.rankDef.decayPenalty}
+              />
+            )}
+            {expressionsDueCount > 0 && (
+              <div style={{
+                ...glassCard, padding: "16px 18px",
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+                border: "1px solid rgba(6,182,212,0.2)", background: "rgba(6,182,212,0.05)",
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <span style={{ fontSize: 20 }}>📚</span>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: "#f1f5f9" }}>
+                      {expressionsDueCount} expression{expressionsDueCount !== 1 ? "s" : ""} due
+                    </div>
+                    <div style={{ fontSize: 12, color: "#64748b" }}>Keep vocabulary sharp</div>
+                  </div>
+                </div>
+                <button onClick={() => setCurrentScreen("lightning")} style={{
+                  padding: "8px 14px", background: "rgba(6,182,212,0.12)",
+                  border: "1px solid rgba(6,182,212,0.25)", borderRadius: 20,
+                  color: "#06b6d4", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap",
+                }}>Practice →</button>
               </div>
-              <div style={{ fontSize: 12, color: "#64748b" }}>Keep your vocabulary sharp</div>
+            )}
+          </div>
+
+          {/* Right column */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <div
+              style={{ ...glassCard, padding: "20px", cursor: "pointer", borderColor: "rgba(6,182,212,0.3)", flex: 1 }}
+              onClick={() => setCurrentScreen("interviewHome")}
+            >
+              <div style={{ fontSize: 28, marginBottom: 10 }}>🎯</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: "#f1f5f9", marginBottom: 6 }}>PM Interview Prep</div>
+              <div style={{ fontSize: 13, color: "#64748b", lineHeight: 1.5, marginBottom: 16 }}>
+                Practice with real interviewers. Get a hire / no-hire verdict.
+              </div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#06b6d4" }}>Start Interview →</div>
+            </div>
+            <button onClick={handleLightningRound} style={{ ...styles.lightningCard, margin: 0 }}>
+              <div style={styles.lightningLeft}>
+                <span style={styles.lightningBolt}>⚡</span>
+                <div>
+                  <div style={styles.lightningTitle}>Lightning Round</div>
+                  <div style={styles.lightningSubtxt}>Quick 90-second drill</div>
+                </div>
+              </div>
+              <span style={styles.lightningChevron}>›</span>
+            </button>
+          </div>
+        </div>
+      ) : (
+        /* Mobile single-column layout */
+        <>
+          <RankHeroCard
+            rankEmoji={progress.rankEmoji}
+            rankLabel={progress.rankLabel}
+            xp={progress.xp}
+            progress={progress.nextRankInfo.progress}
+            nextRank={progress.nextRankInfo.nextRank}
+            xpNeeded={progress.nextRankInfo.xpNeeded}
+            sessionsCount={progress.sessionsCount}
+          />
+          {showDecay && (
+            <DecayWarningBanner
+              daysSince={daysSince}
+              penalty={progress.rankDef.decayPenalty}
+            />
+          )}
+          {expressionsDueCount > 0 && (
+            <div style={{
+              ...glassCard, padding: "16px 18px",
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              marginBottom: 16, border: "1px solid rgba(6,182,212,0.2)", background: "rgba(6,182,212,0.05)",
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <span style={{ fontSize: 20 }}>📚</span>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: "#f1f5f9" }}>
+                    {expressionsDueCount} expression{expressionsDueCount !== 1 ? "s" : ""} due for practice
+                  </div>
+                  <div style={{ fontSize: 12, color: "#64748b" }}>Keep your vocabulary sharp</div>
+                </div>
+              </div>
+              <button onClick={() => setCurrentScreen("lightning")} style={{
+                padding: "8px 14px", background: "rgba(6,182,212,0.12)",
+                border: "1px solid rgba(6,182,212,0.25)", borderRadius: 20,
+                color: "#06b6d4", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap",
+              }}>Practice Now →</button>
+            </div>
+          )}
+          <div
+            style={{ ...glassCard, padding: "16px 20px", cursor: "pointer", borderColor: "rgba(6,182,212,0.3)", marginBottom: 16 }}
+            onClick={() => setCurrentScreen("interviewHome")}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <span style={{ fontSize: 28 }}>🎯</span>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: "#f1f5f9" }}>PM Interview Prep</div>
+                <div style={{ fontSize: 13, color: "#64748b" }}>Get a hire / no-hire verdict from real interviewers</div>
+              </div>
+              <span style={{ marginLeft: "auto", color: "#06b6d4", fontSize: 18 }}>→</span>
             </div>
           </div>
-          <button
-            onClick={() => setCurrentScreen("lightning")}
-            style={{
-              padding: "8px 14px",
-              background: "rgba(6,182,212,0.12)",
-              border: "1px solid rgba(6,182,212,0.25)",
-              borderRadius: 20,
-              color: "#06b6d4",
-              fontSize: 12,
-              fontWeight: 700,
-              cursor: "pointer",
-              whiteSpace: "nowrap",
-            }}
-          >
-            Practice Now →
-          </button>
-        </div>
+        </>
       )}
 
-      {/* Interview Prep Card */}
-      <div
-        style={{
-          ...glassCard,
-          padding: "16px 20px",
-          cursor: "pointer",
-          borderColor: "rgba(6,182,212,0.3)",
-          marginBottom: 16,
-        }}
-        onClick={() => setCurrentScreen("interviewHome")}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ fontSize: 28 }}>🎯</span>
-          <div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: "#f1f5f9" }}>PM Interview Prep</div>
-            <div style={{ fontSize: 13, color: "#64748b" }}>Get a hire / no-hire verdict from real interviewers</div>
-          </div>
-          <span style={{ marginLeft: "auto", color: "#06b6d4", fontSize: 18 }}>→</span>
-        </div>
-      </div>
-
-      {/* Daily Challenge */}
+      {/* Daily Challenge — full width on both layouts */}
       {todayDone ? (
         <DailyChallengeDoneCard onRematch={handleEnterArena} />
       ) : (
@@ -535,17 +579,19 @@ export default function HomeScreen({ user, setCurrentScreen, setPreBattleData, s
         />
       )}
 
-      {/* Lightning Round */}
-      <button onClick={handleLightningRound} style={styles.lightningCard}>
-        <div style={styles.lightningLeft}>
-          <span style={styles.lightningBolt}>⚡</span>
-          <div>
-            <div style={styles.lightningTitle}>Lightning Round</div>
-            <div style={styles.lightningSubtxt}>Quick 90-second drill</div>
+      {/* Lightning Round — mobile only (desktop shows in right col above) */}
+      {!isDesktop && (
+        <button onClick={handleLightningRound} style={styles.lightningCard}>
+          <div style={styles.lightningLeft}>
+            <span style={styles.lightningBolt}>⚡</span>
+            <div>
+              <div style={styles.lightningTitle}>Lightning Round</div>
+              <div style={styles.lightningSubtxt}>Quick 90-second drill</div>
+            </div>
           </div>
-        </div>
-        <span style={styles.lightningChevron}>›</span>
-      </button>
+          <span style={styles.lightningChevron}>›</span>
+        </button>
+      )}
 
       <div style={styles.bottomSpacer} />
     </div>

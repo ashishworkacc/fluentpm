@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { collection, query, limit, getDocs } from "firebase/firestore";
+import { collection, query, limit, getDocs, doc, getDoc } from "firebase/firestore";
 import { db } from "../lib/firebase.js";
 import { RANKS } from "../hooks/useProgress.js";
 
@@ -414,56 +414,77 @@ function RankRoadmap({ currentRank, currentXP }) {
 // ── Main Component ─────────────────────────────────────────────────────────────
 
 export default function ProgressScreen({ user, setCurrentScreen }) {
-  const cached = readCache(user.uid);
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [savedDebriefs, setSavedDebriefs] = useState([]);
   const [selectedDebrief, setSelectedDebrief] = useState(null);
 
-  const profile = cached || {};
-  const currentRank = profile.rank || "rookie";
-  const currentXP = profile.xp || 0;
-  const streak = profile.streak || 0;
-  const sessionsCount = profile.sessionsCount || 0;
+  // Profile stats — start from cache, upgrade from Firestore
+  const cached = readCache(user.uid) || {};
+  const [currentRank, setCurrentRank] = useState(cached.rank || "rookie");
+  const [currentXP, setCurrentXP] = useState(cached.xp || 0);
+  const [streak, setStreak] = useState(cached.streak || 0);
+  const [sessionsCount, setSessionsCount] = useState(cached.sessionsCount || 0);
 
   useEffect(() => {
     const safetyTimer = setTimeout(() => setLoading(false), 8000);
 
-    async function fetchSessions() {
+    async function fetchAll() {
       try {
+        // 1. Fetch Firestore profile/main for XP, rank, streak
+        try {
+          const profileSnap = await getDoc(doc(db, "users", user.uid, "profile", "main"));
+          if (profileSnap.exists()) {
+            const p = profileSnap.data();
+            if (p.xp != null) setCurrentXP(p.xp);
+            if (p.rank) setCurrentRank(p.rank);
+            if (p.streak != null) setStreak(p.streak);
+            if (p.sessionsCount != null) setSessionsCount(p.sessionsCount);
+            // Refresh cache too
+            try {
+              const key = `fluentpm_profile_${user.uid}`;
+              const existing = JSON.parse(localStorage.getItem(key) || "{}");
+              localStorage.setItem(key, JSON.stringify({ ...existing, xp: p.xp, rank: p.rank, streak: p.streak, sessionsCount: p.sessionsCount }));
+            } catch {}
+          }
+        } catch {}
+
+        // 2. Fetch arena sessions
         const sessionsRef = collection(db, "users", user.uid, "sessions");
-        const q = query(sessionsRef, limit(20));
+        const q = query(sessionsRef, limit(50));
         const snap = await getDocs(q);
         const data = snap.docs
           .map(d => d.data())
           .sort((a, b) => (b.savedAt || b.timestamp || "").localeCompare(a.savedAt || a.timestamp || ""))
-          .slice(0, 10);
+          .slice(0, 20);
         setSessions(data);
+        // Update sessionsCount from real Firestore data if profile had 0
+        if (data.length > 0) setSessionsCount(prev => Math.max(prev, data.length));
 
-        // Also fetch interview sessions for saved debriefs
+        // 3. Fetch interview sessions for merged debrief list
         try {
           const interviewRef = collection(db, "users", user.uid, "interviewSessions");
           const iq = query(interviewRef, limit(20));
           const isnap = await getDocs(iq);
           const interviewData = isnap.docs.map(d => ({ ...d.data(), _type: "interview" }));
           const battleData = data.map(d => ({ ...d, _type: "battle" }));
-          // Merge and sort by timestamp
           const merged = [...interviewData, ...battleData].sort((a, b) => {
             const ta = a.timestamp || a.savedAt || "";
             const tb = b.timestamp || b.savedAt || "";
             return tb.localeCompare(ta);
-          }).slice(0, 20);
+          }).slice(0, 30);
           setSavedDebriefs(merged);
         } catch {}
 
       } catch (err) {
-        console.warn("Failed to fetch sessions:", err.message);
+        console.warn("Failed to fetch progress data:", err.message);
       } finally {
         setLoading(false);
+        clearTimeout(safetyTimer);
       }
     }
 
-    fetchSessions().finally(() => clearTimeout(safetyTimer));
+    fetchAll();
     return () => clearTimeout(safetyTimer);
   }, [user.uid]);
 
