@@ -3,6 +3,7 @@ import { sendBattleMessage, correctTranscript, enrichExpression } from "../lib/o
 import { startRecognition } from "../lib/speechRecognition.js";
 import { analyseTranscript } from "../hooks/useRealTimeAnalysis.js";
 import TalkingFace from "./TalkingFace.jsx";
+import MicWaveform from "./MicWaveform.jsx";
 import { cancelSpeech } from "../lib/speechSynthesis.js";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../lib/firebase.js";
@@ -213,6 +214,11 @@ export default function BattleScreen({
   const [currentSpeechText, setCurrentSpeechText] = useState("");
   const [voiceMuted, setVoiceMuted] = useState(false);
 
+  const recordingStartRef = useRef(null);
+  const sessionMetricsRef = useRef(null);
+  const [processingPhase, setProcessingPhase] = useState("idle");
+  // processingPhase: "idle" | "correcting" | "thinking" | "speaking"
+
   const recognitionRef = useRef(null);
   const messagesEndRef = useRef(null);
   const hasInitialised = useRef(false);
@@ -305,6 +311,7 @@ export default function BattleScreen({
     setLiveTranscript("");
     setMicState("recording");
 
+    recordingStartRef.current = Date.now();
     recognitionRef.current = startRecognition(
       (transcript) => {
         liveTranscriptRef.current = transcript;
@@ -332,9 +339,16 @@ export default function BattleScreen({
           return;
         }
 
+        // Calculate WPM from this recording
+        const durationMs = Date.now() - (recordingStartRef.current || Date.now());
+        const wordCount = captured.trim().split(/\s+/).filter(Boolean).length;
+        const wpm = durationMs > 2000 ? Math.round((wordCount / durationMs) * 60000) : null;
+        sessionMetricsRef.current = { wpm, totalWords: wordCount };
+
         // Show "Correcting..." state immediately
         setConfirmedTranscript(captured);
         setMicState("confirming");
+        setProcessingPhase("correcting");
         setIsCorrectingTranscript(true);
 
         // Build context from last 2 messages
@@ -346,6 +360,7 @@ export default function BattleScreen({
           })
           .finally(() => {
             setIsCorrectingTranscript(false);
+            setProcessingPhase("idle");
           });
       }
     );
@@ -414,6 +429,7 @@ export default function BattleScreen({
     if (sessionComplete) return;
 
     setMicState("sending");
+    setProcessingPhase("thinking");
     setLiveTranscript("");
     setConfirmedTranscript("");
     setIsEditing(false);
@@ -441,9 +457,11 @@ export default function BattleScreen({
             ? `Suggested framework: ${scenario.suggestedFramework}`
             : "",
         },
-        coachingProfile
+        coachingProfile,
+        sessionMetricsRef.current
       );
 
+      setProcessingPhase("speaking");
       const cleanReply = cleanOpponentText(reply);
 
       if (cleanReply) {
@@ -495,11 +513,13 @@ export default function BattleScreen({
         // Otherwise onSpeechEnd handler will navigate
       } else {
         setMicState("idle");
+        setProcessingPhase("idle");
       }
     } catch (err) {
       console.error("Battle message error:", err);
       setError("Something went wrong. Please try again.");
       setMicState("idle");
+      setProcessingPhase("idle");
     } finally {
       setIsOpponentTyping(false);
     }
@@ -593,6 +613,7 @@ export default function BattleScreen({
             text={currentSpeechText}
             onSpeechEnd={() => {
               setIsSpeakingFace(false);
+              setProcessingPhase("idle");
               if (pendingFeedbackRef.current) {
                 pendingFeedbackRef.current = false;
                 clearTimeout(safetyTimerRef.current);
@@ -711,6 +732,29 @@ export default function BattleScreen({
         {messages.map((msg, i) => (
           <MessageBubble key={i} message={msg} opponent={opponent} />
         ))}
+        {processingPhase !== "idle" && !sessionComplete && (() => {
+          const PHASE_CONFIG = {
+            correcting: { icon: "✨", text: "Processing audio...", color: "#f59e0b" },
+            thinking:   { icon: "💭", text: "AI thinking...",      color: "#8b5cf6" },
+            speaking:   { icon: "🔊", text: "Responding...",       color: "#3b82f6" },
+          };
+          const cfg = PHASE_CONFIG[processingPhase];
+          if (!cfg) return null;
+          return (
+            <div style={{
+              display: "flex", alignItems: "center", gap: 6,
+              padding: "5px 12px", borderRadius: 20,
+              background: "rgba(255,255,255,0.04)",
+              border: `1px solid ${cfg.color}33`,
+              marginBottom: 8, alignSelf: "flex-start",
+              fontSize: 12, color: cfg.color, fontWeight: 600,
+            }}>
+              <span>{cfg.icon}</span>
+              <span>{cfg.text}</span>
+              <span style={{ animation: "blink 1s infinite" }}>●</span>
+            </div>
+          );
+        })()}
         {isOpponentTyping && <TypingIndicator opponent={opponent} />}
         <div ref={messagesEndRef} />
       </div>
@@ -805,7 +849,7 @@ export default function BattleScreen({
               )}
               <div style={styles.idleRow}>
                 <div style={styles.micButtonWrapper}>
-                  <button onClick={handleMicClick} style={styles.micButton}>
+                  <button onClick={handleMicClick} style={{ ...styles.micButton, opacity: processingPhase !== "idle" ? 0.5 : 1 }} disabled={processingPhase !== "idle"}>
                     🎤
                   </button>
                 </div>
@@ -845,6 +889,7 @@ export default function BattleScreen({
                   🎤
                 </button>
               </div>
+              <MicWaveform isRecording={true} />
               <div style={styles.recordingLabel}>Recording... tap to stop</div>
             </div>
           )}

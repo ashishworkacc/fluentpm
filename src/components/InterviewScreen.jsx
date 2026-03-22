@@ -3,6 +3,7 @@ import { sendInterviewMessage, correctTranscript } from "../lib/openrouter.js";
 import { startRecognition } from "../lib/speechRecognition.js";
 import { analyseTranscript } from "../hooks/useRealTimeAnalysis.js";
 import TalkingFace from "./TalkingFace.jsx";
+import MicWaveform from "./MicWaveform.jsx";
 import { cancelSpeech } from "../lib/speechSynthesis.js";
 import { INTERVIEW_TYPES } from "../data/interviewers.js";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
@@ -152,6 +153,11 @@ export default function InterviewScreen({
   const [currentSpeechText, setCurrentSpeechText] = useState("");
   const [voiceMuted, setVoiceMuted] = useState(false);
 
+  const recordingStartRef = useRef(null);
+  const sessionMetricsRef = useRef(null);
+  const [processingPhase, setProcessingPhase] = useState("idle");
+  // processingPhase: "idle" | "correcting" | "thinking" | "speaking"
+
   const recognitionRef = useRef(null);
   const messagesEndRef = useRef(null);
   const hasInitialised = useRef(false);
@@ -232,6 +238,7 @@ export default function InterviewScreen({
     setLiveTranscript("");
     setMicState("recording");
 
+    recordingStartRef.current = Date.now();
     recognitionRef.current = startRecognition(
       (transcript) => {
         liveTranscriptRef.current = transcript;
@@ -255,14 +262,21 @@ export default function InterviewScreen({
           setError("Voice not captured. Type your response below.");
           return;
         }
+        // Calculate WPM from this recording
+        const durationMs = Date.now() - (recordingStartRef.current || Date.now());
+        const wordCount = captured.trim().split(/\s+/).filter(Boolean).length;
+        const wpm = durationMs > 2000 ? Math.round((wordCount / durationMs) * 60000) : null;
+        sessionMetricsRef.current = { wpm, totalWords: wordCount };
+
         setConfirmedTranscript(captured);
         setMicState("confirming");
+        setProcessingPhase("correcting");
         setIsCorrectingTranscript(true);
 
         const context = messages.slice(-2).map(m => `${m.role}: ${m.text}`).join(" | ");
         correctTranscript(captured, context, question?.text || "")
           .then(corrected => setConfirmedTranscript(corrected))
-          .finally(() => setIsCorrectingTranscript(false));
+          .finally(() => { setIsCorrectingTranscript(false); setProcessingPhase("idle"); });
       }
     );
 
@@ -318,6 +332,7 @@ export default function InterviewScreen({
     if (sessionComplete) return;
 
     setMicState("sending");
+    setProcessingPhase("thinking");
     setLiveTranscript("");
     setConfirmedTranscript("");
     setIsEditing(false);
@@ -340,9 +355,11 @@ export default function InterviewScreen({
         apiMessages,
         interviewer,
         question,
-        questionType
+        questionType,
+        sessionMetricsRef.current
       );
 
+      setProcessingPhase("speaking");
       const cleanReply = cleanInterviewerText(reply);
 
       if (cleanReply) {
@@ -397,12 +414,14 @@ export default function InterviewScreen({
           setTimeout(() => setCurrentScreen("interviewFeedback"), 1000);
         }
       } else if (!interviewFeedback || newTurn < 3) {
+        setProcessingPhase("idle");
         setMicState("idle");
       }
     } catch (err) {
       console.error("Interview message error:", err);
       setError("Something went wrong. Please try again.");
       setMicState("idle");
+      setProcessingPhase("idle");
     } finally {
       setIsTyping(false);
     }
@@ -505,6 +524,7 @@ export default function InterviewScreen({
             text={currentSpeechText}
             onSpeechEnd={() => {
               setIsSpeakingFace(false);
+              setProcessingPhase("idle");
               if (pendingFeedbackRef.current) {
                 pendingFeedbackRef.current = false;
                 clearTimeout(safetyTimerRef.current);
@@ -574,6 +594,29 @@ export default function InterviewScreen({
         {messages.map((msg, i) => (
           <MessageBubble key={i} message={msg} interviewer={interviewer} />
         ))}
+        {processingPhase !== "idle" && !sessionComplete && (() => {
+          const PHASE_CONFIG = {
+            correcting: { icon: "✨", text: "Processing audio...", color: "#f59e0b" },
+            thinking:   { icon: "💭", text: "AI thinking...",      color: "#8b5cf6" },
+            speaking:   { icon: "🔊", text: "Responding...",       color: "#3b82f6" },
+          };
+          const cfg = PHASE_CONFIG[processingPhase];
+          if (!cfg) return null;
+          return (
+            <div style={{
+              display: "flex", alignItems: "center", gap: 6,
+              padding: "5px 12px", borderRadius: 20,
+              background: "rgba(255,255,255,0.04)",
+              border: `1px solid ${cfg.color}33`,
+              marginBottom: 8, alignSelf: "flex-start",
+              fontSize: 12, color: cfg.color, fontWeight: 600,
+            }}>
+              <span>{cfg.icon}</span>
+              <span>{cfg.text}</span>
+              <span style={{ animation: "blink 1s infinite" }}>●</span>
+            </div>
+          );
+        })()}
         {isTyping && <TypingIndicator interviewer={interviewer} />}
         <div ref={messagesEndRef} />
       </div>
@@ -643,7 +686,7 @@ export default function InterviewScreen({
             <div style={styles.idleMicArea}>
               <div style={styles.idleRow}>
                 <div style={{ position: "relative", width: 80, height: 80, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <button onClick={handleMicClick} style={styles.micButton}>🎤</button>
+                  <button onClick={handleMicClick} style={{ ...styles.micButton, opacity: processingPhase !== "idle" ? 0.5 : 1 }} disabled={processingPhase !== "idle"}>🎤</button>
                 </div>
                 <div style={{ fontSize: 12, color: "#475569", fontWeight: 500 }}>or</div>
                 <button onClick={() => setMicState("nomic")} style={styles.typeToggleBtn}>
@@ -678,6 +721,7 @@ export default function InterviewScreen({
                 <div style={styles.recordingRingInnerOuter} />
                 <button onClick={handleStopRecording} style={styles.recordingButton}>🎤</button>
               </div>
+              <MicWaveform isRecording={true} />
               <div style={styles.recordingLabel}>Recording... tap to stop</div>
             </div>
           )}

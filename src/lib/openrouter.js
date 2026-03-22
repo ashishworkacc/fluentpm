@@ -89,12 +89,21 @@ Deduct points for: filler words (basically, actually, you know, I mean), vague s
 weak openers ("I think maybe...", "So yeah..."), incomplete sentences, Indian English phrases from the blacklist,
 failing to directly address the question asked, going off-topic.
 
-STRUCTURE_SCORE is 1–5 (NOT 1–10):
-1 = No structure — rambling, no clear point
-2 = Weak — some attempt at structure but confusing
-3 = Adequate — clear enough but missing intro or conclusion
-4 = Good — clear structure with opening and closing
-5 = Excellent — textbook structure, framework applied correctly
+STRUCTURE SCORING — STAR FRAMEWORK:
+Evaluate each STAR component individually:
+- S (Situation): Did they set context for what was happening?
+- T (Task): Did they name their specific goal or challenge?
+- A (Action): Did they describe what THEY personally did?
+- R (Result): Did they close with a specific outcome, metric, or impact?
+
+For product design scenarios: map S→Context, T→Constraints, A→Solution, R→Impact
+
+STRUCTURE_SCORE 1-5:
+5 = All 4 STAR components hit clearly
+4 = All 4 hit but one is weak
+3 = Exactly 3 STAR components present
+2 = Only 2 STAR components present
+1 = 0-1 components — rambling, no structure
 
 COGNITIVE LOAD ANALYSIS — observe the transcript for:
 - TRANSLATION_MOMENT: Hesitation or filler before technical/English nouns (suggests translating from native language)
@@ -112,7 +121,11 @@ POWER_PHRASES: ["phrase1" || "phrase2" — strong phrases the user actually used
 HIGHLIGHT: [one sentence on the single best thing the user did]
 TIP: [one specific, actionable improvement for next time]
 STRUCTURE_SCORE: [1-5 integer]
-STRUCTURE_TIP: [one sentence on how to improve structure]
+STRUCTURE_STAR_S: [hit | partial | miss — did they set Situation/Context?]
+STRUCTURE_STAR_T: [hit | partial | miss — did they name their Task/Challenge?]
+STRUCTURE_STAR_A: [hit | partial | miss — did they describe their Action personally?]
+STRUCTURE_STAR_R: [hit | partial | miss — did they close with a Result/Impact/Metric?]
+STRUCTURE_TIP: [one sentence focused on the weakest missing STAR component]
 STRUCTURE_REPLAY_SHOW: [true or false]
 STRUCTURE_REPLAY_TURN: [if true: quote the exact sentence from the user's response that lacked structure; if false: "none"]
 STRUCTURE_REPLAY_FIX: [if true: rewrite that sentence with better structure; if false: "none"]
@@ -123,7 +136,9 @@ FRAMEWORK_TIP: [one sentence on how the framework was or wasn't used; "none" if 
 NATURALNESS_FLAG: [phrase from user's transcript] | [Indian English | Bookish | Corporate Jargon] | [natural alternative — or "none" if no flags]
 (repeat NATURALNESS_FLAG line for each flag, or write NATURALNESS_FLAG: none if there are none)
 COGNITIVE_LOAD_PATTERN: [none | translation_moment | perfect_word_search | hierarchy_freeze | multiple]
-COGNITIVE_LOAD_DETAIL: [one sentence describing what was observed — e.g. "You hesitated before 'prioritization' suggesting translation from Hindi" — or "none" if no pattern]
+COGNITIVE_LOAD_DETAIL: [one sentence describing what was observed — or "none" if no pattern]
+PACING_WPM: [words per minute as integer, or null if not measured]
+PACING_NOTE: [too fast | too slow | good pace | null — "too fast" if > 170 WPM, "too slow" if < 90 WPM, "good pace" if 90-170]
 ###END###`;
 }
 
@@ -178,6 +193,10 @@ export function parseFeedbackBlock(text) {
   const structureScoreRaw = extract("STRUCTURE_SCORE");
   const structureScore = parseInt(structureScoreRaw, 10) || 3;
   const structureTip = extract("STRUCTURE_TIP");
+  const structureStarS = extract("STRUCTURE_STAR_S") || null;
+  const structureStarT = extract("STRUCTURE_STAR_T") || null;
+  const structureStarA = extract("STRUCTURE_STAR_A") || null;
+  const structureStarR = extract("STRUCTURE_STAR_R") || null;
 
   const structureReplayShowRaw = extract("STRUCTURE_REPLAY_SHOW");
   const structureReplayShow = structureReplayShowRaw.toLowerCase() === "true";
@@ -219,6 +238,10 @@ export function parseFeedbackBlock(text) {
 
   const cognitiveLoadPattern = extract("COGNITIVE_LOAD_PATTERN");
   const cognitiveLoadDetail = extract("COGNITIVE_LOAD_DETAIL");
+  const pacingWpmRaw = extract("PACING_WPM");
+  const pacingWpm = pacingWpmRaw && pacingWpmRaw !== "null" ? parseInt(pacingWpmRaw, 10) || null : null;
+  const pacingNoteRaw = extract("PACING_NOTE");
+  const pacingNote = pacingNoteRaw && pacingNoteRaw !== "null" ? pacingNoteRaw : null;
 
   return {
     score,
@@ -229,6 +252,10 @@ export function parseFeedbackBlock(text) {
     tip,
     structureScore,
     structureTip,
+    structureStarS,
+    structureStarT,
+    structureStarA,
+    structureStarR,
     structureReplayShow,
     structureReplayTurn: structureReplayShow ? structureReplayTurn : "",
     structureReplayFix: structureReplayShow ? structureReplayFix : "",
@@ -240,12 +267,14 @@ export function parseFeedbackBlock(text) {
     naturalnessFlagsCount,
     cognitiveLoadPattern: cognitiveLoadPattern || "none",
     cognitiveLoadDetail: cognitiveLoadDetail || "none",
+    pacingWpm,
+    pacingNote,
   };
 }
 
 // ── Battle API Call ──────────────────────────────────────────────────────────
 
-export async function sendBattleMessage(messages, opponent, profile, scenario, options = {}, coachingProfile = null) {
+export async function sendBattleMessage(messages, opponent, profile, scenario, options = {}, coachingProfile = null, sessionMetrics = null) {
   const systemPrompt = buildBattleSystemPrompt(opponent, profile, scenario, { ...options, coachingProfile });
 
   const response = await fetch(OPENROUTER_API_URL, {
@@ -259,7 +288,7 @@ export async function sendBattleMessage(messages, opponent, profile, scenario, o
     body: JSON.stringify({
       model: MODEL,
       messages: [
-        { role: "system", content: systemPrompt },
+        { role: "system", content: systemPrompt + (sessionMetrics ? `\n\nUSER SPEECH METRICS (this session):\n- Pacing: ${sessionMetrics.wpm ? `${sessionMetrics.wpm} WPM` : "not measured"} (ideal: 120–150 WPM; > 170 = too fast, < 90 = too slow)\n- Total words spoken: ${sessionMetrics.totalWords || "unknown"}` : "") },
         ...messages,
       ],
       temperature: 0.7,
@@ -475,6 +504,28 @@ TOUGHNESS RULES — apply strictly:
 - Challenge assumptions: "What if that assumption doesn't hold? What's your fallback?"
 - Push for decisions: "If you had to choose one approach right now, what would it be?"
 
+ADAPTIVE FOLLOW-UP RULES — apply turn by turn:
+Turn 1 (Opener): Standard question. Let candidate frame their answer.
+Turn 2 (Probe Depth):
+- If answer used "we" without specifying role → ask: "What specifically did YOU decide here?"
+- If no metric mentioned → ask: "How did you measure success?"
+- If answer was strong and specific → acknowledge briefly, pivot to a harder adjacent dimension
+Turn 3 (Pressure Point):
+- Push on the weakest signal you've heard so far
+- If no trade-off mentioned → "What did you deprioritize, and why?"
+- If no stakeholder conflict mentioned → "How did you get alignment on that decision?"
+Turn 4 (Challenge Assumption):
+- Challenge one key assumption in their answer: "You assumed [X] — what if that's not true?"
+- Or probe a stated action: "You chose [Y] — why that over [obvious alternative]?"
+Turn 5 (Closing Probe):
+- "Looking back, what would you do differently?"
+- Or: "If this was a company 10x the scale, what changes in your approach?"
+
+PRESSURE CALIBRATION:
+- Strong answer (clear ownership, 1+ specific metric, explicit trade-off) → acknowledge briefly, pivot to a harder dimension
+- Weak answer (vague, "we"-heavy, zero metrics) → probe HARDER on same topic, do NOT move to new topic
+- Never say "great answer" or "that's excellent" — always follow with a probe
+
 TURN STRUCTURE:
 - Turn 1: Your opener (already set to the question). Just be the interviewer.
 - Turn 2-4: Follow-up questions. Dig into what they said.
@@ -503,6 +554,10 @@ ANALYTICAL: [1-5]
 EXECUTION: [1-5]
 COMMUNICATION: [1-5]
 LEADERSHIP: [1-5]
+STRUCTURE_STAR_S: [hit | partial | miss]
+STRUCTURE_STAR_T: [hit | partial | miss]
+STRUCTURE_STAR_A: [hit | partial | miss]
+STRUCTURE_STAR_R: [hit | partial | miss]
 VERDICT: [Strong Hire | Hire | No Hire | Strong No Hire]
 VERDICT_REASON: [2-3 sentences explaining the verdict — be specific about what tipped it]
 STRONGEST_MOMENT: [quote or describe the single best thing the candidate said]
@@ -544,6 +599,10 @@ export function parseInterviewFeedback(text) {
     execution: score("EXECUTION"),
     communication: score("COMMUNICATION"),
     leadership: score("LEADERSHIP"),
+    structureStarS: extract("STRUCTURE_STAR_S") || null,
+    structureStarT: extract("STRUCTURE_STAR_T") || null,
+    structureStarA: extract("STRUCTURE_STAR_A") || null,
+    structureStarR: extract("STRUCTURE_STAR_R") || null,
     verdict: extract("VERDICT"),
     verdictReason: extract("VERDICT_REASON"),
     strongestMoment: extract("STRONGEST_MOMENT"),
@@ -567,7 +626,7 @@ export function parseInterviewFeedback(text) {
 
 // ── Interview API Call ───────────────────────────────────────────────────────
 
-export async function sendInterviewMessage(messages, interviewer, question, questionType) {
+export async function sendInterviewMessage(messages, interviewer, question, questionType, sessionMetrics = null) {
   const systemPrompt = buildInterviewSystemPrompt(interviewer, question, questionType);
 
   const response = await fetch(OPENROUTER_API_URL, {
@@ -581,7 +640,7 @@ export async function sendInterviewMessage(messages, interviewer, question, ques
     body: JSON.stringify({
       model: MODEL,
       messages: [
-        { role: "system", content: systemPrompt },
+        { role: "system", content: systemPrompt + (sessionMetrics ? `\n\nUSER SPEECH METRICS (this session):\n- Pacing: ${sessionMetrics.wpm ? `${sessionMetrics.wpm} WPM` : "not measured"} (ideal: 120–150 WPM)\n- Total words spoken: ${sessionMetrics.totalWords || "unknown"}` : "") },
         ...messages,
       ],
       temperature: 0.7,

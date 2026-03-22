@@ -130,6 +130,30 @@ function StarRating({ value, onChange }) {
   );
 }
 
+function MetricPill({ label, value, color, note }) {
+  return (
+    <div style={{
+      display: "flex", flexDirection: "column", alignItems: "center",
+      padding: "10px 16px", borderRadius: 14,
+      background: "rgba(255,255,255,0.05)",
+      border: `1px solid ${color}44`,
+      minWidth: 90, flex: 1,
+    }}>
+      <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600, marginBottom: 3, textTransform: "uppercase", letterSpacing: "0.8px" }}>
+        {label}
+      </div>
+      <div style={{ fontSize: 22, fontWeight: 900, color, letterSpacing: "-0.5px", lineHeight: 1.1 }}>
+        {value}
+      </div>
+      {note && (
+        <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 3, textAlign: "center" }}>
+          {note}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SectionCard({ children, accentColor, style }) {
   return (
     <div style={{
@@ -417,6 +441,41 @@ export default function FeedbackScreen({ user, sessionData, opponent, setCurrent
       {/* Score Hero */}
       <ScoreHero score={sd.score} xp={sd.xp} structureScore={sd.structureScore} />
 
+      {/* ── Objective Metrics Strip ── */}
+      {(() => {
+        const { fillerCounts = {}, cleanSpeechPct, pacingWpm, pacingNote } = sd;
+        const fillerTotal = Object.values(fillerCounts).reduce((a, b) => a + b, 0);
+        if (!pacingWpm && fillerTotal === 0 && !cleanSpeechPct) return null;
+        return (
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12, paddingInline: 4 }}>
+            {pacingWpm != null && (
+              <MetricPill
+                label="Pacing"
+                value={`${pacingWpm} WPM`}
+                color={pacingNote === "good pace" ? "#10b981" : "#f59e0b"}
+                note={pacingNote === "too fast" ? "Slow down slightly" : pacingNote === "too slow" ? "Pick up the pace" : "Ideal range"}
+              />
+            )}
+            {fillerTotal != null && (
+              <MetricPill
+                label="Fillers"
+                value={fillerTotal}
+                color={fillerTotal === 0 ? "#10b981" : fillerTotal <= 3 ? "#f59e0b" : "#f43f5e"}
+                note={fillerTotal === 0 ? "Clean!" : fillerTotal <= 3 ? "Minor" : "Work on this"}
+              />
+            )}
+            {cleanSpeechPct != null && (
+              <MetricPill
+                label="Clean Speech"
+                value={`${cleanSpeechPct}%`}
+                color={cleanSpeechPct >= 85 ? "#10b981" : cleanSpeechPct >= 70 ? "#f59e0b" : "#f43f5e"}
+                note={cleanSpeechPct >= 85 ? "Excellent" : "Keep going"}
+              />
+            )}
+          </div>
+        );
+      })()}
+
       {/* Self-Confidence Rating */}
       <div style={styles.content} onMouseUp={handleFeedbackSelection} onTouchEnd={handleFeedbackSelection}>
         <SectionCard accentColor="#f59e0b">
@@ -540,72 +599,55 @@ export default function FeedbackScreen({ user, sessionData, opponent, setCurrent
           </SectionCard>
         )}
 
-        {/* STRUCTURE — purple left border */}
-        {(sd.structureTip || sd.structureReplayShow) && (
-          <SectionCard accentColor="#8b5cf6">
-            <SectionLabel color="#8b5cf6">STRUCTURE</SectionLabel>
-            {sd.structureScore !== undefined && (
-              <div style={styles.structureBarRow}>
-                <span style={styles.structureBarLabel}>{sd.structureScore}/5</span>
-                <div style={styles.structureBarTrack}>
-                  <div style={{
-                    ...styles.structureBarFill,
-                    width: `${(sd.structureScore / 5) * 100}%`,
-                    background: sd.structureScore >= 4
-                      ? "linear-gradient(90deg, #10b981, #06b6d4)"
-                      : sd.structureScore >= 3
-                        ? "linear-gradient(90deg, #f59e0b, #f43f5e)"
-                        : "linear-gradient(90deg, #f43f5e, #e11d48)",
-                  }} />
-                </div>
+        {/* Structure Score + STAR Checklist */}
+        <SectionCard accentColor="#6366f1">
+          <SectionLabel color="#6366f1">Structure</SectionLabel>
+
+          {/* STAR checklist if we have the data */}
+          {(sd.structureStarS || sd.structureStarT || sd.structureStarA || sd.structureStarR) ? (
+            <div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
+                {[
+                  { key: "S", label: "Situation", val: sd.structureStarS },
+                  { key: "T", label: "Task",      val: sd.structureStarT },
+                  { key: "A", label: "Action",    val: sd.structureStarA },
+                  { key: "R", label: "Result",    val: sd.structureStarR },
+                ].map(({ key, label, val }) => {
+                  const color = val === "hit" ? "#10b981" : val === "partial" ? "#f59e0b" : "#f43f5e";
+                  const icon  = val === "hit" ? "✓" : val === "partial" ? "~" : "✗";
+                  return (
+                    <div key={key} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontSize: 16, color, fontWeight: 800, width: 18 }}>{icon}</span>
+                      <span style={{ fontSize: 13, color: "#94a3b8" }}>
+                        <strong style={{ color }}>{key}</strong> — {label}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
-            )}
-            {/* Enhanced structure analysis */}
-            {sd.structureScore !== undefined && (
-              <div style={{ marginTop: 10, marginBottom: 10 }}>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-                  {sd.frameworkFit && (
-                    <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 20, background: "rgba(139,92,246,0.12)", color: "#c4b5fd", fontWeight: 700 }}>
-                      Framework fit: {sd.frameworkFit}/5
-                    </span>
-                  )}
-                  <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 20,
-                    background: sd.structureScore >= 4 ? "rgba(16,185,129,0.12)" : sd.structureScore >= 3 ? "rgba(245,158,11,0.12)" : "rgba(244,63,94,0.12)",
-                    color: sd.structureScore >= 4 ? "#10b981" : sd.structureScore >= 3 ? "#f59e0b" : "#f43f5e",
-                    fontWeight: 700
-                  }}>
-                    {sd.structureScore >= 4 ? "✓ Well-structured" : sd.structureScore >= 3 ? "⚡ Needs tightening" : "✗ Needs structure"}
-                  </span>
-                </div>
-                <div style={{ fontSize: 12, color: "#64748b", lineHeight: 1.5, marginBottom: 8 }}>
-                  {sd.structureScore >= 4
-                    ? "You opened with a clear point, backed it with evidence, and closed well. This is executive-level structure."
-                    : sd.structureScore >= 3
-                      ? "You had a point to make but it was buried. Lead with your conclusion, then explain why."
-                      : "Your answer read as stream-of-consciousness. Use PREP: Point → Reason → Example → Point."}
-                </div>
-                {sd.frameworkTip && sd.frameworkTip !== "none" && (
-                  <div style={{ fontSize: 13, color: "#94a3b8", fontStyle: "italic", lineHeight: 1.5 }}>
-                    "{sd.frameworkTip}"
-                  </div>
-                )}
+            </div>
+          ) : (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+              <div style={{ fontSize: 32, fontWeight: 900, color: sd.structureScore >= 4 ? "#10b981" : sd.structureScore >= 3 ? "#f59e0b" : "#f43f5e", lineHeight: 1 }}>
+                {sd.structureScore}
+                <span style={{ fontSize: 14, color: "#64748b" }}>/5</span>
               </div>
-            )}
-            {sd.structureTip && (
-              <p style={{ ...styles.bodyText, marginBottom: sd.structureReplayShow ? 14 : 0 }}>
-                {sd.structureTip}
-              </p>
-            )}
-            {sd.structureReplayShow && sd.structureReplayTurn && (
-              <div style={styles.replayBlock}>
-                <div style={styles.replayLabel}>What you said:</div>
-                <div style={styles.replayOriginal}>{sd.structureReplayTurn}</div>
-                <div style={styles.replayLabel}>Stronger version:</div>
-                <div style={styles.replayFixed}>{sd.structureReplayFix}</div>
-              </div>
-            )}
-          </SectionCard>
-        )}
+            </div>
+          )}
+
+          {sd.structureTip && (
+            <p style={{ margin: 0, fontSize: 13, color: "#94a3b8", lineHeight: 1.6 }}>{sd.structureTip}</p>
+          )}
+
+          {sd.structureReplayShow && sd.structureReplayTurn && (
+            <div style={styles.replayBlock}>
+              <div style={styles.replayLabel}>What you said:</div>
+              <div style={styles.replayOriginal}>{sd.structureReplayTurn}</div>
+              <div style={styles.replayLabel}>Stronger version:</div>
+              <div style={styles.replayFixed}>{sd.structureReplayFix}</div>
+            </div>
+          )}
+        </SectionCard>
 
         {/* COACH'S CALL — white left border, prominent */}
         {sd.tip && (
