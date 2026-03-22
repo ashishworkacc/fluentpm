@@ -30,6 +30,7 @@ export default function ProfileScreen({ user, setCurrentScreen }) {
   const [fetchError, setFetchError] = useState(null);
   const [firestoreXP, setFirestoreXP] = useState(profCache?.xp ?? null);
   const [firestoreSessionsCount, setFirestoreSessionsCount] = useState(profCache?.sessionsCount ?? null);
+  const [lexStats, setLexStats] = useState(null);
 
   useEffect(() => {
     // 5-second safety timeout — always stop loading
@@ -56,6 +57,21 @@ export default function ProfileScreen({ user, setCurrentScreen }) {
         const fetchedInterviews = iSnap.docs.map(d => d.data()).sort((a, b) => (b.savedAt || "").localeCompare(a.savedAt || ""));
         setSessions(fetchedSessions);
         setInterviews(fetchedInterviews);
+
+        // Fetch expression stats
+        try {
+          const lexRef = collection(db, "users", user.uid, "lexicon");
+          const lexSnap = await getDocs(lexRef);
+          const lexItems = lexSnap.docs.map(d => d.data()).filter(d => d.status !== "pending_enrichment");
+          const lexStatsData = {
+            totalSaved:     lexItems.length,
+            totalPracticed: lexItems.filter(i => (i.practiceCount || 0) > 0).length,
+            totalMastered:  lexItems.filter(i => i.status === "mastered").length,
+            troubleCount:   lexItems.filter(i => (i.practiceCount || 0) >= 1 && (i.avgScore || 5) < 3).length,
+          };
+          setLexStats(lexStatsData);
+        } catch {}
+
         writeProfCache(user.uid, {
           sessions: fetchedSessions,
           interviews: fetchedInterviews,
@@ -186,6 +202,43 @@ export default function ProfileScreen({ user, setCurrentScreen }) {
               </div>
             ))}
           </div>
+
+          {/* Expression Vault Stats */}
+          {lexStats && lexStats.totalSaved > 0 && (
+            <div style={{
+              background: "rgba(255,255,255,0.04)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              borderRadius: 16,
+              padding: "16px 18px",
+              marginBottom: 12,
+            }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: 14 }}>
+                Expression Vault
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: lexStats.troubleCount > 0 || lexStats.totalMastered > 0 ? 12 : 0 }}>
+                {[
+                  { label: "Saved",     value: lexStats.totalSaved,     color: "#818cf8" },
+                  { label: "Practiced", value: lexStats.totalPracticed, color: "#06b6d4" },
+                  { label: "Mastered",  value: lexStats.totalMastered,  color: "#f59e0b" },
+                ].map(({ label, value, color }) => (
+                  <div key={label} style={{ textAlign: "center", padding: "10px 8px", background: "rgba(255,255,255,0.04)", borderRadius: 12 }}>
+                    <div style={{ fontSize: 26, fontWeight: 900, color, letterSpacing: "-0.5px", lineHeight: 1 }}>{value}</div>
+                    <div style={{ fontSize: 11, color: "#64748b", marginTop: 4, fontWeight: 600 }}>{label}</div>
+                  </div>
+                ))}
+              </div>
+              {lexStats.troubleCount > 0 && (
+                <div style={{ padding: "8px 12px", background: "rgba(244,63,94,0.06)", border: "1px solid rgba(244,63,94,0.15)", borderRadius: 10, fontSize: 12, color: "#fca5a5", marginBottom: 6 }}>
+                  🎯 {lexStats.troubleCount} trouble expression{lexStats.troubleCount !== 1 ? "s" : ""} — practice in Lightning Round
+                </div>
+              )}
+              {lexStats.totalMastered > 0 && (
+                <div style={{ padding: "8px 12px", background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.15)", borderRadius: 10, fontSize: 12, color: "#fcd34d" }}>
+                  🏆 {lexStats.totalMastered} expression{lexStats.totalMastered !== 1 ? "s" : ""} mastered — in your active vocabulary
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Frequent Mistakes */}
           {topMistakes.length > 0 && (

@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from "react";
-import { collection, getDocs, addDoc, query, orderBy, limit } from "firebase/firestore";
+import { collection, getDocs, addDoc, doc, updateDoc, query, orderBy, limit } from "firebase/firestore";
 import { db } from "../lib/firebase.js";
 import { scoreLightningRound } from "../lib/openrouter.js";
 import { startRecognition } from "../lib/speechRecognition.js";
 import { analyseTranscript } from "../hooks/useRealTimeAnalysis.js";
 import { SCENARIOS } from "../data/scenarios.js";
 import { PHRASE_CATEGORIES } from "../data/phrases.js";
+import { computeNextReview, isDueForReview, getMasteryPercent, getNextReviewLabel } from "../lib/expressionScheduler.js";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -111,6 +112,8 @@ export default function LightningRoundScreen({ user, setCurrentScreen }) {
   const roundResultsRef = useRef([]);
   const [currentRoundScore, setCurrentRoundScore] = useState(null);
   const [isScoring, setIsScoring] = useState(false);
+  const [questionType, setQuestionType] = useState("standard");
+  // "standard" | "context" | "variant"
 
   const recognitionRef = useRef(null);
   const liveTranscriptRef = useRef("");
@@ -137,10 +140,14 @@ export default function LightningRoundScreen({ user, setCurrentScreen }) {
       const sorted = data
         .filter(e => e.status !== "mastered")
         .sort((a, b) => {
-          if (!a.lastUsedDate && !b.lastUsedDate) return 0;
-          if (!a.lastUsedDate) return -1;
-          if (!b.lastUsedDate) return 1;
-          return new Date(a.lastUsedDate) - new Date(b.lastUsedDate);
+          const aDue = isDueForReview(a);
+          const bDue = isDueForReview(b);
+          if (aDue && !bDue) return -1;
+          if (!aDue && bDue) return 1;
+          if (!a.nextReviewDate && !b.nextReviewDate) return 0;
+          if (!a.nextReviewDate) return -1;
+          if (!b.nextReviewDate) return 1;
+          return new Date(a.nextReviewDate) - new Date(b.nextReviewDate);
         });
       setExpressions(sorted);
     } catch (err) {
@@ -153,6 +160,8 @@ export default function LightningRoundScreen({ user, setCurrentScreen }) {
     const expr = expressions[roundIndex] ? expressions[roundIndex].expression : getFallbackPhrase(roundIndex);
     setCurrentExpression(expr);
     setCurrentScenario(sessionScenarios[roundIndex] || sessionScenarios[0]);
+    const ROUND_TYPES = ["standard", "context", "variant"];
+    setQuestionType(ROUND_TYPES[roundIndex % 3]);
   }, [roundIndex, expressions]);
 
   // Countdown timer for intro/scenario phases
@@ -294,6 +303,17 @@ export default function LightningRoundScreen({ user, setCurrentScreen }) {
         roundResultsRef.current = updated;
         return updated;
       });
+
+      // ── Update expression SRS in Firestore ──
+      const expressionItem = expressions[roundIndex];
+      if (expressionItem?.id && roundResult.score) {
+        const updates = computeNextReview(expressionItem, roundResult.score);
+        try {
+          await updateDoc(doc(db, "users", user.uid, "lexicon", expressionItem.id), updates);
+        } catch (e) {
+          console.warn("SRS update failed:", e.message);
+        }
+      }
     } catch (err) {
       console.error("Lightning score error:", err);
       const fallback = {
@@ -393,6 +413,42 @@ export default function LightningRoundScreen({ user, setCurrentScreen }) {
             +{xp} XP
           </div>
         </div>
+
+        {/* Expression progress bars */}
+        {roundResultsRef.current.length > 0 && expressions.some((e, i) => roundResultsRef.current[i]) && (
+          <div style={{ ...glassCard, padding: "16px 18px", marginBottom: 12 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#06b6d4", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: 12 }}>
+              Expression Progress
+            </div>
+            {roundResultsRef.current.map((r, i) => {
+              const expr = expressions[i];
+              if (!expr) return null;
+              const pct = getMasteryPercent({
+                ...expr,
+                goodPracticeCount: (expr.goodPracticeCount || 0) + (r.score >= 3 ? 1 : 0),
+              });
+              const scoreColor = getScoreColor(r.score);
+              return (
+                <div key={i} style={{ marginBottom: 12 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
+                    <span style={{ fontSize: 12, color: "#cbd5e1", fontStyle: "italic", maxWidth: "75%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      "{expr.expression}"
+                    </span>
+                    <span style={{ fontSize: 12, color: scoreColor, fontWeight: 700, background: `${scoreColor}18`, padding: "2px 8px", borderRadius: 10, flexShrink: 0 }}>
+                      {r.score}/5
+                    </span>
+                  </div>
+                  <div style={{ height: 5, background: "rgba(255,255,255,0.07)", borderRadius: 4, overflow: "hidden" }}>
+                    <div style={{ height: "100%", width: `${pct}%`, background: pct === 100 ? "#f59e0b" : "#6366f1", borderRadius: 4 }} />
+                  </div>
+                  <div style={{ fontSize: 10, color: "#64748b", marginTop: 3 }}>
+                    {pct === 100 ? "✓ Mastered!" : `${pct}% to mastery`}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {worstRound?.feedback && (
           <div style={{ ...glassCard, padding: "16px 18px", marginBottom: 12 }}>
@@ -504,8 +560,24 @@ export default function LightningRoundScreen({ user, setCurrentScreen }) {
             <div style={{ fontSize: 14, color: "#f1f5f9", lineHeight: 1.5 }}>{currentScenario?.text}</div>
           </div>
 
-          {/* Expression reminder */}
+          {/* Expression reminder + question type chip */}
           <div style={{ ...glassCard, padding: "12px 16px", marginBottom: 16, textAlign: "center" }}>
+            {(() => {
+              const currentExprItem = expressions[roundIndex];
+              const variantText = currentExprItem?.enriched?.variants?.[0] || currentExpression;
+              const TYPE_CONFIG = {
+                standard: { icon: "💬", text: "Use this expression naturally in your response" },
+                context:  { icon: "🔥", text: "High pressure — hold your ground and use it" },
+                variant:  { icon: "🎭", text: `Try the variant: "${variantText}"` },
+              };
+              const cfg = TYPE_CONFIG[questionType] || TYPE_CONFIG.standard;
+              return (
+                <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 8, display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
+                  <span>{cfg.icon}</span>
+                  <span>{cfg.text}</span>
+                </div>
+              );
+            })()}
             <div style={{ fontSize: 11, color: "#06b6d4", fontWeight: 700, marginBottom: 4 }}>Use this:</div>
             <div style={{ fontSize: 15, fontWeight: 700, color: "#f1f5f9" }}>"{currentExpression}"</div>
           </div>

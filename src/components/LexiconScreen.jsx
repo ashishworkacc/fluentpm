@@ -12,6 +12,7 @@ import {
 import { db } from "../lib/firebase.js";
 import { enrichExpression } from "../lib/openrouter.js";
 import { PHRASE_CATEGORIES } from "../data/phrases.js";
+import { isDueForReview, getMasteryPercent, getNextReviewLabel } from "../lib/expressionScheduler.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -45,14 +46,6 @@ function getDifficultyFromNaturalness(rating) {
   return "easy";
 }
 
-function isOverdue(item) {
-  if (item.status === "mastered") return false;
-  if (!item.lastUsedDate) return true;
-  const last = new Date(item.lastUsedDate);
-  const now = new Date();
-  const diffDays = (now - last) / (1000 * 60 * 60 * 24);
-  return diffDays > 3;
-}
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
@@ -354,6 +347,33 @@ function ExpressionCard({ item, onMarkMastered, onDelete }) {
               </span>
             )}
           </div>
+          {/* Mastery progress */}
+          {(() => {
+            const pct = getMasteryPercent(item);
+            const barColor = item.status === "mastered" ? "#f59e0b" : pct >= 50 ? "#10b981" : "#6366f1";
+            return (
+              <div style={{ marginTop: 8, marginBottom: 2 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 3 }}>
+                  <span style={{ fontSize: 10, color: "#64748b", fontWeight: 600 }}>
+                    {item.status === "mastered" ? "Mastered ✓" : `${pct}% to mastery`}
+                  </span>
+                  {(item.practiceCount || 0) > 0 && (
+                    <span style={{ fontSize: 10, color: "#64748b" }}>
+                      avg {item.avgScore || "—"}/5 · {item.practiceCount} practice{item.practiceCount !== 1 ? "s" : ""}
+                    </span>
+                  )}
+                </div>
+                <div style={{ height: 3, background: "rgba(255,255,255,0.07)", borderRadius: 3, overflow: "hidden" }}>
+                  <div style={{ height: "100%", width: `${pct}%`, background: barColor, borderRadius: 3, minWidth: pct > 0 ? 3 : 0 }} />
+                </div>
+                {item.nextReviewDate && (
+                  <div style={{ fontSize: 10, color: isDueForReview(item) ? "#f43f5e" : "#475569", marginTop: 3, fontWeight: isDueForReview(item) ? 700 : 400 }}>
+                    {getNextReviewLabel(item)}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </div>
         <span style={{ fontSize: 18, color: "#334155", transition: "transform 0.2s", transform: expanded ? "rotate(180deg)" : "none" }}>
           ›
@@ -692,7 +712,7 @@ export default function LexiconScreen({ user, setCurrentScreen }) {
             >
               {label}
               {i === 1 && (() => {
-                const dueCount = items.filter(it => it.status !== "mastered" && isOverdue(it)).length;
+                const dueCount = items.filter(it => it.status !== "mastered" && isDueForReview(it)).length;
                 return dueCount > 0 ? (
                   <span style={{
                     marginLeft: 6, fontSize: 10, fontWeight: 700,
@@ -732,6 +752,30 @@ export default function LexiconScreen({ user, setCurrentScreen }) {
               <ExpressionCard key={item.id} item={item} onMarkMastered={handleMarkMastered} onDelete={handleDelete} />
             ))
           )}
+
+          {/* Trouble Expressions — shown only in All Saved tab */}
+          {activeTab === 0 && (() => {
+            const trouble = items
+              .filter(i => i.status !== "mastered" && (i.practiceCount || 0) >= 1 && (i.avgScore || 5) < 3)
+              .sort((a, b) => (a.avgScore || 0) - (b.avgScore || 0))
+              .slice(0, 5);
+            if (trouble.length === 0) return null;
+            return (
+              <div style={{ ...glassCard, padding: "16px 18px", marginBottom: 16, marginTop: 8, border: "1px solid rgba(244,63,94,0.2)", background: "rgba(244,63,94,0.04)" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#f43f5e", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: 12 }}>
+                  🎯 Trouble Expressions
+                </div>
+                {trouble.map((it, i) => (
+                  <div key={it.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingBlock: 8, borderTop: i > 0 ? "1px solid rgba(255,255,255,0.05)" : "none" }}>
+                    <span style={{ fontSize: 13, color: "#cbd5e1", fontStyle: "italic" }}>"{it.expression}"</span>
+                    <span style={{ fontSize: 11, color: "#f43f5e", fontWeight: 700, background: "rgba(244,63,94,0.12)", padding: "2px 8px", borderRadius: 10, flexShrink: 0, marginLeft: 8 }}>
+                      avg {it.avgScore}/5
+                    </span>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
         </>
       )}
 

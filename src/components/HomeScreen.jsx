@@ -382,15 +382,13 @@ export default function HomeScreen({ user, setCurrentScreen, setPreBattleData, s
         try {
           const lexRef = collection(db, "users", user.uid, "lexicon");
           const lexSnap = await getDocs(lexRef);
-          const now = new Date();
           let dueCount = 0;
           lexSnap.docs.forEach(d => {
             const data = d.data();
             if (data.status === "mastered") return;
-            if (!data.lastUsedDate) { dueCount++; return; }
-            const last = new Date(data.lastUsedDate);
-            const diffDays = (now - last) / (1000 * 60 * 60 * 24);
-            if (diffDays > 3) dueCount++;
+            const today = new Date().toISOString().slice(0, 10);
+            if (!data.nextReviewDate) { dueCount++; return; }
+            if (data.nextReviewDate <= today) dueCount++;
           });
           setExpressionsDueCount(dueCount);
         } catch {}
