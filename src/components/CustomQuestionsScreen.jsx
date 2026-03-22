@@ -17,6 +17,24 @@ const glassCard = {
   borderRadius: 16,
 };
 
+// ── Question cache (5-min TTL) ────────────────────────────────────────────────
+
+const Q_CACHE_TTL = 5 * 60 * 1000;
+function readQCache(uid) {
+  try {
+    const raw = JSON.parse(localStorage.getItem(`fluentpm_questions_${uid}`) || "null");
+    if (raw && Date.now() - raw.ts < Q_CACHE_TTL && Array.isArray(raw.data)) return raw.data;
+  } catch {}
+  return null;
+}
+function writeQCache(uid, data) {
+  try { localStorage.setItem(`fluentpm_questions_${uid}`, JSON.stringify({ ts: Date.now(), data })); } catch {}
+}
+// Force-write cache immediately (for after imports)
+function bustQCache(uid) {
+  try { localStorage.removeItem(`fluentpm_questions_${uid}`); } catch {}
+}
+
 // ── Interviewer picker modal ──────────────────────────────────────────────────
 
 function InterviewerPicker({ question, onSelect, onCancel }) {
@@ -88,33 +106,45 @@ function InterviewerPicker({ question, onSelect, onCancel }) {
 // ── Main Component ────────────────────────────────────────────────────────────
 
 export default function CustomQuestionsScreen({ user, setCurrentScreen, setCustomQuestion, setInterviewData }) {
-  const [questions, setQuestions] = useState([]);
+  const [questions, setQuestions] = useState(() => readQCache(user.uid) || []);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(null);
   const [bulkText, setBulkText] = useState("");
   const [importing, setImporting] = useState(false);
   const [importMsg, setImportMsg] = useState("");
-  const [pickerQuestion, setPickerQuestion] = useState(null); // which question is being practiced
+  const [pickerQuestion, setPickerQuestion] = useState(null);
 
   useEffect(() => {
     fetchQuestions();
   }, [user.uid]);
 
+  function sortQuestions(docs) {
+    return docs.sort((a, b) => {
+      const ta = a.addedAt?.seconds ? a.addedAt.seconds * 1000 : (typeof a.addedAt === "string" ? new Date(a.addedAt).getTime() : 0);
+      const tb = b.addedAt?.seconds ? b.addedAt.seconds * 1000 : (typeof b.addedAt === "string" ? new Date(b.addedAt).getTime() : 0);
+      return tb - ta;
+    });
+  }
+
   async function fetchQuestions() {
+    // Show cache instantly if available
+    const cached = readQCache(user.uid);
+    if (cached && cached.length > 0) {
+      setQuestions(cached);
+      setLoading(false);
+    }
+    setFetchError(null);
     try {
-      // No orderBy — avoids needing a Firestore index
       const ref = collection(db, "users", user.uid, "customQuestions");
-      const snap = await getDocs(query(ref, limit(100)));
-      const data = snap.docs
-        .map(d => ({ id: d.id, ...d.data() }))
-        // sort client-side by addedAt descending
-        .sort((a, b) => {
-          const ta = a.addedAt?.seconds ? a.addedAt.seconds * 1000 : (typeof a.addedAt === "string" ? new Date(a.addedAt).getTime() : 0);
-          const tb = b.addedAt?.seconds ? b.addedAt.seconds * 1000 : (typeof b.addedAt === "string" ? new Date(b.addedAt).getTime() : 0);
-          return tb - ta;
-        });
+      const snap = await getDocs(query(ref, limit(200)));
+      const data = sortQuestions(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       setQuestions(data);
+      writeQCache(user.uid, data);
     } catch (err) {
       console.warn("Failed to fetch custom questions:", err.message);
+      if (!cached || cached.length === 0) {
+        setFetchError("Couldn't connect to your question bank. Check your internet and tap Retry.");
+      }
     } finally {
       setLoading(false);
     }
@@ -128,8 +158,6 @@ export default function CustomQuestionsScreen({ user, setCurrentScreen, setCusto
 
     try {
       const ref = collection(db, "users", user.uid, "customQuestions");
-
-      // Save all docs in parallel — don't wait sequentially (avoids UI freeze)
       await Promise.all(lines.map(text =>
         addDoc(ref, {
           text,
@@ -144,10 +172,12 @@ export default function CustomQuestionsScreen({ user, setCurrentScreen, setCusto
       setBulkText("");
       setImportMsg(`✓ Imported ${lines.length} question${lines.length !== 1 ? "s" : ""}`);
       setTimeout(() => setImportMsg(""), 4000);
+      // Bust cache so we freshly fetch including new additions
+      bustQCache(user.uid);
       await fetchQuestions();
     } catch (err) {
       console.error("Import error:", err);
-      setImportMsg("Import failed — try again");
+      setImportMsg("Import failed — check your connection and try again");
     } finally {
       setImporting(false);
     }
@@ -268,9 +298,30 @@ export default function CustomQuestionsScreen({ user, setCurrentScreen, setCusto
         Your Questions ({questions.length})
       </div>
 
-      {loading ? (
-        <div style={{ textAlign: "center", color: "#64748b", padding: 40 }}>Loading...</div>
-      ) : questions.length === 0 ? (
+      {/* Fetch error banner */}
+      {fetchError && (
+        <div style={{
+          background: "rgba(244,63,94,0.08)", border: "1px solid rgba(244,63,94,0.2)",
+          borderRadius: 12, padding: "12px 16px", marginBottom: 16,
+          display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+        }}>
+          <span style={{ fontSize: 13, color: "#fca5a5", lineHeight: 1.5 }}>{fetchError}</span>
+          <button
+            onClick={() => fetchQuestions()}
+            style={{
+              flexShrink: 0, padding: "6px 14px", background: "rgba(244,63,94,0.15)",
+              border: "1px solid rgba(244,63,94,0.3)", borderRadius: 8,
+              color: "#f43f5e", fontSize: 12, fontWeight: 700, cursor: "pointer",
+            }}
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      {loading && questions.length === 0 ? (
+        <div style={{ textAlign: "center", color: "#64748b", padding: 40 }}>Loading your questions...</div>
+      ) : !fetchError && questions.length === 0 ? (
         <div style={{ textAlign: "center", padding: "40px 20px", color: "#475569" }}>
           <div style={{ fontSize: 32, marginBottom: 12 }}>📝</div>
           <div style={{ fontSize: 14, color: "#94a3b8" }}>No custom questions yet</div>

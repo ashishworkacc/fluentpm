@@ -22,25 +22,23 @@ const glassCard = {
   borderRadius: 20,
 };
 
-function seededRandom(seed) {
-  let h = 0;
-  for (let i = 0; i < seed.length; i++) {
-    h = (Math.imul(31, h) + seed.charCodeAt(i)) | 0;
-  }
-  return Math.abs(h);
-}
-
-function getRandomScenario(roundIndex) {
-  const seed = `${new Date().toISOString().slice(0, 10)}_round_${roundIndex}`;
-  const s = seededRandom(seed);
-  return SCENARIOS[s % SCENARIOS.length];
+// Pick 3 fresh scenarios per session, avoiding the last 6 seen
+function pickSessionScenarios(uid) {
+  const key = `fluentpm_lr_recent_${uid}`;
+  let recent = [];
+  try { recent = JSON.parse(localStorage.getItem(key) || "[]"); } catch {}
+  const fresh = SCENARIOS.filter(s => !recent.includes(s.id));
+  const pool = fresh.length >= 6 ? fresh : SCENARIOS;
+  const shuffled = [...pool].sort(() => Math.random() - 0.5);
+  const picked = shuffled.slice(0, TOTAL_ROUNDS);
+  const newRecent = [...picked.map(s => s.id), ...recent].slice(0, 9);
+  try { localStorage.setItem(key, JSON.stringify(newRecent)); } catch {}
+  return picked;
 }
 
 function getFallbackPhrase(roundIndex) {
   const allPhrases = PHRASE_CATEGORIES.buyingTime.phrases;
-  const seed = `fallback_${new Date().toISOString().slice(0, 10)}_${roundIndex}`;
-  const s = seededRandom(seed);
-  return allPhrases[s % allPhrases.length].text;
+  return allPhrases[Math.floor(Math.random() * allPhrases.length)].text;
 }
 
 function getScoreColor(score) {
@@ -82,6 +80,9 @@ function Spinner() {
 // ── Main Component ─────────────────────────────────────────────────────────────
 
 export default function LightningRoundScreen({ user, setCurrentScreen }) {
+  // Pick 3 fresh scenarios once per session mount
+  const [sessionScenarios] = useState(() => pickSessionScenarios(user.uid));
+
   // Round state
   const [roundIndex, setRoundIndex] = useState(0);
   const [phase, setPhase] = useState("intro"); // intro | scenario | responding | scoring | summary
@@ -151,7 +152,7 @@ export default function LightningRoundScreen({ user, setCurrentScreen }) {
   useEffect(() => {
     const expr = expressions[roundIndex] ? expressions[roundIndex].expression : getFallbackPhrase(roundIndex);
     setCurrentExpression(expr);
-    setCurrentScenario(getRandomScenario(roundIndex));
+    setCurrentScenario(sessionScenarios[roundIndex] || sessionScenarios[0]);
   }, [roundIndex, expressions]);
 
   // Countdown timer for intro/scenario phases

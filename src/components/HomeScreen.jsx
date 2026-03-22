@@ -52,6 +52,13 @@ function getDailyChallenge(uid) {
   return { opponent, scenario };
 }
 
+// Shuffle: bust today's cache then pick a fresh challenge
+function shuffleDailyChallenge(uid) {
+  const today = new Date().toISOString().slice(0, 10);
+  try { localStorage.removeItem(`fluentpm_daily_${uid}_${today}`); } catch {}
+  return getDailyChallenge(uid);
+}
+
 function getDaysSince(dateStr) {
   if (!dateStr) return null;
   const today = new Date();
@@ -575,7 +582,7 @@ export default function HomeScreen({ user, setCurrentScreen, setPreBattleData, s
           opponent={dailyOpponent}
           scenario={dailyScenario}
           onEnterArena={handleEnterArena}
-          onShuffle={() => setDailyChallenge(getDailyChallenge(user.uid))}
+          onShuffle={() => setDailyChallenge(shuffleDailyChallenge(user.uid))}
         />
       )}
 
