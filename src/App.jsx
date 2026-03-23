@@ -20,6 +20,7 @@ import PushbackDrillScreen from "./components/PushbackDrillScreen.jsx";
 import QuickDrillScreen from "./components/QuickDrillScreen.jsx";
 import CustomQuestionsScreen from "./components/CustomQuestionsScreen.jsx";
 import ProfileScreen from "./components/ProfileScreen.jsx";
+import LeagueScreen from "./components/LeagueScreen.jsx";
 
 // ── Window width hook ─────────────────────────────────────────────────────────
 
@@ -362,6 +363,8 @@ export default function App() {
         return <PhrasesScreen setCurrentScreen={setCurrentScreen} />;
       case "lightning":
         return <LightningRoundScreen user={user} setCurrentScreen={setCurrentScreen} />;
+      case "league":
+        return <LeagueScreen user={user} setCurrentScreen={setCurrentScreen} />;
       case "interviewHome":
         return (
           <InterviewHomeScreen

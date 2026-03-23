@@ -116,6 +116,82 @@ const glassCard = {
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
+function GoalRing({ todayXP, goalXP }) {
+  const pct = Math.min(todayXP / (goalXP || 25), 1);
+  const r = 46, cx = 54, cy = 54;
+  const circumference = 2 * Math.PI * r;
+  const offset = circumference * (1 - pct);
+  const done = pct >= 1;
+
+  return (
+    <div style={{ position: "relative", width: 108, height: 108, flexShrink: 0 }}>
+      <svg width={108} height={108} viewBox="0 0 108 108">
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth={9} />
+        <circle
+          cx={cx} cy={cy} r={r} fill="none"
+          stroke={done ? "#10b981" : "#6366f1"}
+          strokeWidth={9} strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={offset}
+          transform={`rotate(-90 ${cx} ${cy})`}
+          style={{ transition: "stroke-dashoffset 0.6s ease, stroke 0.3s" }}
+        />
+      </svg>
+      <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1 }}>
+        {done ? (
+          <div style={{ fontSize: 28 }}>🔥</div>
+        ) : (
+          <>
+            <div style={{ fontSize: 20, fontWeight: 900, color: "#f1f5f9", lineHeight: 1 }}>{todayXP}</div>
+            <div style={{ fontSize: 10, color: "#64748b", fontWeight: 600 }}>/ {goalXP} XP</div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ConfettiBurst({ onDone }) {
+  useEffect(() => {
+    const t = setTimeout(onDone, 2800);
+    return () => clearTimeout(t);
+  }, [onDone]);
+
+  const COLORS = ["#6366f1", "#10b981", "#f59e0b", "#f43f5e", "#8b5cf6", "#06b6d4"];
+  const pieces = Array.from({ length: 36 }, (_, i) => ({
+    id: i,
+    color: COLORS[i % COLORS.length],
+    left: 10 + (i / 36) * 80,
+    delay: (i % 8) * 0.08,
+    size: 7 + (i % 4) * 2,
+  }));
+
+  return (
+    <>
+      <style>{`
+        @keyframes confettiFall {
+          0%   { transform: translateY(-20px) rotate(0deg); opacity: 1; }
+          100% { transform: translateY(100vh) rotate(540deg); opacity: 0; }
+        }
+      `}</style>
+      <div style={{ position: "fixed", inset: 0, pointerEvents: "none", zIndex: 9999, overflow: "hidden" }}>
+        {pieces.map(p => (
+          <div key={p.id} style={{
+            position: "absolute",
+            left: `${p.left}%`,
+            top: -20,
+            width: p.size,
+            height: p.size,
+            background: p.color,
+            borderRadius: p.id % 3 === 0 ? "50%" : 2,
+            animation: `confettiFall 2.4s ${p.delay}s ease-in forwards`,
+          }} />
+        ))}
+      </div>
+    </>
+  );
+}
+
 function StakeholderTrust({ uid }) {
   const [trustData, setTrustData] = useState([]);
 
@@ -338,6 +414,12 @@ export default function HomeScreen({ user, setCurrentScreen, setPreBattleData, s
   const [dailyChallenge, setDailyChallenge] = useState(() => getDailyChallenge(user.uid));
   const { opponent: dailyOpponent, scenario: dailyScenario } = dailyChallenge;
 
+  const [todayXP, setTodayXP] = useState(0);
+  const [dailyGoal, setDailyGoal] = useState(25);
+  const [showConfetti, setShowConfetti] = useState(false);
+  const [leagueData, setLeagueData] = useState({ league: "bronze", weeklyXP: 0 });
+  const [streakFreezeActive, setStreakFreezeActive] = useState(false);
+
   // ── Step 2: fetch Firestore silently in the background ────────────────────
   useEffect(() => {
     async function syncFromFirestore() {
@@ -357,19 +439,41 @@ export default function HomeScreen({ user, setCurrentScreen, setPreBattleData, s
           profileData = DEFAULT_PROFILE;
         }
 
+        // Today's XP for goal ring
+        const todayDateStr = today;
+        const todayXPKey = `fluentpm_today_xp_${user.uid}_${todayDateStr}`;
+        const storedTodayXP = parseInt(localStorage.getItem(todayXPKey) || "0");
+        setTodayXP(storedTodayXP);
+        setDailyGoal(profileData.dailyGoalXP || 25);
+        setLeagueData({ league: profileData.league || "bronze", weeklyXP: profileData.weeklyXP || 0 });
+        setStreakFreezeActive(profileData.streakFreeze || false);
+
+        // Confetti if goal was just hit (fire confetti on next HomeScreen visit)
+        const hitKey = `fluentpm_goal_hit_${user.uid}_${todayDateStr}`;
+        if (localStorage.getItem(hitKey) === "1") {
+          setShowConfetti(true);
+          localStorage.removeItem(hitKey);
+        }
+
         // Decay check — run after profile loads
         if (profileData) {
           const decayResult = checkDecay(profileData.lastPlayedDate, profileData.rank || "rookie", profileData.xp || 0);
           if (decayResult.shouldDecay && !decayApplied) {
-            setDecayApplied(true);
-            const updatedProfile = {
-              ...profileData,
-              xp: decayResult.newXP,
-              rank: decayResult.newRank,
-            };
-            await updateDoc(ref, { xp: decayResult.newXP, rank: decayResult.newRank });
-            setProfile(updatedProfile);
-            writeCache(user.uid, updatedProfile);
+            // Check streak freeze — consume it instead of applying decay
+            if (profileData.streakFreeze) {
+              await updateDoc(ref, { streakFreeze: false });
+              console.log("Streak freeze consumed — streak preserved.");
+            } else {
+              setDecayApplied(true);
+              const updatedProfile = {
+                ...profileData,
+                xp: decayResult.newXP,
+                rank: decayResult.newRank,
+              };
+              await updateDoc(ref, { xp: decayResult.newXP, rank: decayResult.newRank });
+              setProfile(updatedProfile);
+              writeCache(user.uid, updatedProfile);
+            }
           }
         }
 
@@ -410,6 +514,27 @@ export default function HomeScreen({ user, setCurrentScreen, setPreBattleData, s
 
   function handleLightningRound() {
     setCurrentScreen("lightning");
+  }
+
+  async function updateDailyGoal(xp) {
+    setDailyGoal(xp);
+    try {
+      await updateDoc(doc(db, "users", user.uid, "profile", "main"), { dailyGoalXP: xp });
+    } catch {}
+  }
+
+  async function buyStreakFreeze() {
+    if (streakFreezeActive) return;
+    try {
+      const snap = await getDoc(doc(db, "users", user.uid, "profile", "main"));
+      const currentXP = snap.data()?.xp || 0;
+      if (currentXP < 10) return;
+      await updateDoc(doc(db, "users", user.uid, "profile", "main"), {
+        streakFreeze: true,
+        xp: currentXP - 10,
+      });
+      setStreakFreezeActive(true);
+    } catch {}
   }
 
   // Decay check
@@ -572,6 +697,76 @@ export default function HomeScreen({ user, setCurrentScreen, setPreBattleData, s
         </>
       )}
 
+      {/* Daily Goal Ring Card */}
+      {(() => {
+        const LEAGUES_MAP = {
+          bronze:   { icon: "🥉", name: "Bronze",   color: "#cd7f32" },
+          silver:   { icon: "🥈", name: "Silver",   color: "#94a3b8" },
+          gold:     { icon: "🥇", name: "Gold",     color: "#f59e0b" },
+          sapphire: { icon: "💎", name: "Sapphire", color: "#3b82f6" },
+          diamond:  { icon: "💠", name: "Diamond",  color: "#a855f7" },
+        };
+        const lc = LEAGUES_MAP[leagueData.league] || LEAGUES_MAP.bronze;
+        return (
+          <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 18, padding: "16px 18px", marginBottom: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+              <GoalRing todayXP={todayXP} goalXP={dailyGoal} />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: "#f1f5f9", marginBottom: 4 }}>
+                  {todayXP >= dailyGoal ? "Goal smashed! 🎉" : "Today's Goal"}
+                </div>
+                <div style={{ fontSize: 12, color: "#64748b", marginBottom: 10 }}>
+                  {todayXP >= dailyGoal
+                    ? "You hit your target. Keep the streak alive."
+                    : `${Math.max(0, dailyGoal - todayXP)} XP to go`}
+                </div>
+                {/* Goal picker */}
+                <div style={{ display: "flex", gap: 5 }}>
+                  {[{ v: 15, l: "Casual" }, { v: 25, l: "Regular" }, { v: 50, l: "Serious" }].map(({ v, l }) => (
+                    <button
+                      key={v}
+                      onClick={() => updateDailyGoal(v)}
+                      style={{
+                        padding: "3px 10px", borderRadius: 20, border: "none", fontSize: 11, fontWeight: 700, cursor: "pointer",
+                        background: dailyGoal === v ? "rgba(99,102,241,0.25)" : "rgba(255,255,255,0.05)",
+                        color: dailyGoal === v ? "#818cf8" : "#64748b",
+                        transition: "all 0.15s",
+                      }}
+                    >{l}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* League chip + streak freeze row */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 12, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+              <button
+                onClick={() => setCurrentScreen("league")}
+                style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 5, padding: 0 }}
+              >
+                <span style={{ fontSize: 14 }}>{lc.icon}</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: lc.color }}>{lc.name} League</span>
+                <span style={{ fontSize: 11, color: "#64748b" }}>· {leagueData.weeklyXP} XP this week →</span>
+              </button>
+
+              {/* Streak Freeze */}
+              {streakFreezeActive ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: "#10b981", fontWeight: 700 }}>
+                  <span>🛡️</span><span>Protected</span>
+                </div>
+              ) : (
+                <button
+                  onClick={buyStreakFreeze}
+                  style={{ background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.2)", borderRadius: 20, padding: "3px 10px", fontSize: 11, fontWeight: 700, color: "#f59e0b", cursor: "pointer" }}
+                >
+                  🛡️ Freeze −10 XP
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Daily Challenge — full width on both layouts */}
       {todayDone ? (
         <DailyChallengeDoneCard onRematch={handleEnterArena} />
@@ -599,6 +794,7 @@ export default function HomeScreen({ user, setCurrentScreen, setPreBattleData, s
       )}
 
       <div style={styles.bottomSpacer} />
+      {showConfetti && <ConfettiBurst onDone={() => setShowConfetti(false)} />}
     </div>
   );
 }

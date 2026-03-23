@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { collection, query, limit, getDocs, doc, getDoc } from "firebase/firestore";
 import { db } from "../lib/firebase.js";
+import { BADGES } from "../lib/achievementChecker.js";
 
 const glassCard = {
   background: "rgba(15,16,40,0.82)",
@@ -31,6 +32,7 @@ export default function ProfileScreen({ user, setCurrentScreen }) {
   const [firestoreXP, setFirestoreXP] = useState(profCache?.xp ?? null);
   const [firestoreSessionsCount, setFirestoreSessionsCount] = useState(profCache?.sessionsCount ?? null);
   const [lexStats, setLexStats] = useState(null);
+  const [earnedBadges, setEarnedBadges] = useState([]);
 
   useEffect(() => {
     // 5-second safety timeout — always stop loading
@@ -70,6 +72,15 @@ export default function ProfileScreen({ user, setCurrentScreen }) {
             troubleCount:   lexItems.filter(i => (i.practiceCount || 0) >= 1 && (i.avgScore || 5) < 3).length,
           };
           setLexStats(lexStatsData);
+        } catch {}
+
+        // Fetch badges
+        try {
+          const badgesSnap = await getDocs(collection(db, "users", user.uid, "badges"));
+          const badgeMap = {};
+          badgesSnap.docs.forEach(d => { badgeMap[d.id] = d.data(); });
+          const earned = BADGES.map(b => ({ ...b, earned: !!badgeMap[b.id], earnedAt: badgeMap[b.id]?.earnedAt }));
+          setEarnedBadges(earned);
         } catch {}
 
         writeProfCache(user.uid, {
@@ -237,6 +248,48 @@ export default function ProfileScreen({ user, setCurrentScreen }) {
                   🏆 {lexStats.totalMastered} expression{lexStats.totalMastered !== 1 ? "s" : ""} mastered — in your active vocabulary
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Achievement Badge Wall */}
+          {earnedBadges.length > 0 && (
+            <div style={{
+              background: "rgba(255,255,255,0.04)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              borderRadius: 16,
+              padding: "16px 18px",
+              marginBottom: 12,
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.8px" }}>
+                  Achievements
+                </div>
+                <div style={{ fontSize: 11, color: "#6366f1", fontWeight: 700 }}>
+                  {earnedBadges.filter(b => b.earned).length} / {earnedBadges.length}
+                </div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12 }}>
+                {earnedBadges.map(badge => (
+                  <div
+                    key={badge.id}
+                    title={badge.desc}
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      gap: 4,
+                      opacity: badge.earned ? 1 : 0.22,
+                      filter: badge.earned ? "none" : "grayscale(1)",
+                      transition: "opacity 0.2s",
+                    }}
+                  >
+                    <div style={{ fontSize: 24 }}>{badge.icon}</div>
+                    <div style={{ fontSize: 8, color: badge.earned ? "#94a3b8" : "#475569", textAlign: "center", lineHeight: 1.3, fontWeight: 600 }}>
+                      {badge.name}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 

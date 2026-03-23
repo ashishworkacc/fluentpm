@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { doc, addDoc, collection, updateDoc, getDoc, setDoc, increment } from "firebase/firestore";
+import { doc, addDoc, collection, updateDoc, getDoc, setDoc, increment, getDocs } from "firebase/firestore";
 import { db } from "../lib/firebase.js";
 import { getRankFromXP } from "../hooks/useProgress.js";
 import { buildAndSaveCoachingProfile } from "../lib/coachingProfile.js";
@@ -8,6 +8,7 @@ import { cancelSpeech, speakOpponentLine } from "../lib/speechSynthesis.js";
 import { enrichExpression, generateEliteVersion } from "../lib/openrouter.js";
 import { startRecognition } from "../lib/speechRecognition.js";
 import { serverTimestamp } from "firebase/firestore";
+import { checkNewBadges, BADGES } from "../lib/achievementChecker.js";
 
 // Keep localStorage cache in sync so HomeScreen loads instantly next time
 function updateProfileCache(uid, updates) {
@@ -197,6 +198,8 @@ export default function FeedbackScreen({ user, sessionData, opponent, setCurrent
   const [savingHighlight, setSavingHighlight] = useState(false);
   const [highlightSaved, setHighlightSaved] = useState(false);
 
+  const [newlyEarnedBadges, setNewlyEarnedBadges] = useState([]);
+
   // Shadowing / echo mode
   const [eliteResponse, setEliteResponse] = useState("");
   const [generatingElite, setGeneratingElite] = useState(false);
@@ -379,6 +382,66 @@ export default function FeedbackScreen({ user, sessionData, opponent, setCurrent
           };
           await updateDoc(profileRef, { ...profileUpdate, sessionsCount: increment(1) });
           updateProfileCache(user.uid, profileUpdate); // keep local cache fresh
+
+          // ── Today's XP goal tracking ──
+          const todayDateStr = today; // already defined as getTodayDateString()
+          const todayXPKey = `fluentpm_today_xp_${user.uid}_${todayDateStr}`;
+          const prevTodayXP = parseInt(localStorage.getItem(todayXPKey) || "0");
+          const newTodayXP = prevTodayXP + xpToAdd;
+          localStorage.setItem(todayXPKey, String(newTodayXP));
+
+          // Check if daily goal just hit (fire confetti on next HomeScreen visit)
+          const goalXP = current.dailyGoalXP || 25;
+          if (prevTodayXP < goalXP && newTodayXP >= goalXP) {
+            localStorage.setItem(`fluentpm_goal_hit_${user.uid}_${todayDateStr}`, "1");
+          }
+
+          // ── Weekly XP for League ──
+          const weekStart = (() => {
+            const d = new Date();
+            const monday = new Date(d);
+            monday.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+            return monday.toISOString().slice(0, 10);
+          })();
+          const leagueWeekId = current.leagueWeekId;
+          if (leagueWeekId !== weekStart) {
+            // New week — reset weeklyXP
+            await updateDoc(profileRef, { weeklyXP: xpToAdd, leagueWeekId: weekStart });
+          } else {
+            await updateDoc(profileRef, { weeklyXP: (current.weeklyXP || 0) + xpToAdd });
+          }
+
+          // ── Achievement badges ──
+          try {
+            const badgesSnap = await getDocs(collection(db, "users", user.uid, "badges"));
+            const existingIds = badgesSnap.docs.map(d => d.id);
+
+            const stats = {
+              sessionsCount: (current.sessionsCount || 0) + 1,
+              interviewsCount: current.interviewsCount || 0,
+              lightningCount: current.lightningCount || 0,
+              streak: newStreak,
+              bestScore: Math.max(current.bestScore || 0, sd.score || 0),
+              lexiconCount: 0,
+              masteredCount: 0,
+              totalXP: newXP,
+            };
+
+            const newBadges = checkNewBadges(stats, existingIds);
+            if (newBadges.length > 0) {
+              await Promise.all(newBadges.map(b =>
+                setDoc(doc(db, "users", user.uid, "badges", b.id), {
+                  earnedAt: serverTimestamp(),
+                  icon: b.icon,
+                  name: b.name,
+                  desc: b.desc,
+                })
+              ));
+              setNewlyEarnedBadges(newBadges);
+            }
+          } catch (err) {
+            console.warn("Badge check failed:", err.message);
+          }
         } else {
           const xpToAdd = sd.xp || (sd.score ? Math.round(15 + ((Math.min(10, sd.score || 5) - 4) / 6) * 35) : 20);
           await setDoc(profileRef, {
@@ -438,6 +501,32 @@ export default function FeedbackScreen({ user, sessionData, opponent, setCurrent
 
   return (
     <div style={styles.container}>
+      {/* Badge unlock toast */}
+      {newlyEarnedBadges.length > 0 && (
+        <div style={{ position: "fixed", top: 20, left: "50%", transform: "translateX(-50%)", zIndex: 9999, display: "flex", flexDirection: "column", gap: 8, width: "calc(100% - 40px)", maxWidth: 400 }}>
+          {newlyEarnedBadges.map(b => (
+            <div key={b.id} style={{
+              background: "rgba(16,185,129,0.15)",
+              border: "1px solid rgba(16,185,129,0.3)",
+              backdropFilter: "blur(20px)",
+              borderRadius: 14,
+              padding: "10px 18px",
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              animation: "slideDown 0.3s ease",
+            }}>
+              <span style={{ fontSize: 24 }}>{b.icon}</span>
+              <div>
+                <div style={{ fontSize: 10, color: "#10b981", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>Badge Unlocked!</div>
+                <div style={{ fontSize: 14, color: "#f1f5f9", fontWeight: 700 }}>{b.name}</div>
+                <div style={{ fontSize: 11, color: "#64748b" }}>{b.desc}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Score Hero */}
       <ScoreHero score={sd.score} xp={sd.xp} structureScore={sd.structureScore} />
 
