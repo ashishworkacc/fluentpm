@@ -491,6 +491,9 @@ export default function StatsScreen({ user, setCurrentScreen }) {
 
   // ── Computed metrics ────────────────────────────────────────────────────────
 
+  const totalSessions = (profile?.sessionsCount) ?? (sessions.length + interviews.length);
+  const streak = profile?.streak || 0;
+
   const allScores = sessions.map(s => s.aiScore || s.score).filter(Boolean);
   const avgScore = allScores.length ? allScores.reduce((a, b) => a + b, 0) / allScores.length : 0;
   const bestScore = allScores.length ? Math.max(...allScores) : null;
@@ -505,9 +508,6 @@ export default function StatsScreen({ user, setCurrentScreen }) {
   const readinessScore = aiReadiness?.score ?? formulaScore;
   const readinessColor = readinessScore >= 75 ? "#10b981" : readinessScore >= 50 ? "#f59e0b" : "#f43f5e";
   const readinessLabel = aiReadiness?.label ?? (readinessScore >= 75 ? "Interview Ready" : readinessScore >= 50 ? "Getting There" : "Keep Practising");
-
-  const totalSessions = (profile?.sessionsCount) ?? (sessions.length + interviews.length);
-  const streak = profile?.streak || 0;
   const currentRank = profile?.rank || "rookie";
   const currentXP = profile?.xp || 0;
 
