@@ -910,3 +910,61 @@ Return ONLY the cleaned questions, one per line, no numbering, no commentary, no
     return lines;
   }
 }
+
+/**
+ * Generate an optimized "gold standard" version of the user's interview answer.
+ * Returns { optimizedAnswer: string, ownershipIssues: string[], metricGaps: string[] }
+ */
+export async function generateOptimizedAnswer(userTranscript, questionText, questionType) {
+  const prompt = `You are an expert PM interview coach. A candidate answered the following interview question:
+
+QUESTION: "${questionText}"
+QUESTION TYPE: ${questionType}
+
+CANDIDATE'S ANSWER:
+"${userTranscript}"
+
+Analyze and rewrite their answer. Return EXACTLY this format:
+
+OPTIMIZED_ANSWER: [A 4-6 sentence STAR-aligned answer using "I" (not "we"), specific metrics, and active voice. Use the same general context/story the candidate mentioned but elevate the language and structure.]
+
+OWNERSHIP_ISSUES: [Comma-separated list of exact phrases where candidate used "we/us/our" instead of "I/my", or used passive voice. Max 4 items. If none, write "none"]
+
+METRIC_GAPS: [Comma-separated list of points where a specific number/% would strengthen the answer. Max 3 items. If none, write "none"]`;
+
+  try {
+    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${import.meta.env.VITE_OPENROUTER_API_KEY}`,
+        "HTTP-Referer": "https://fluentpm.app",
+        "X-Title": "FluentPM",
+      },
+      body: JSON.stringify({
+        model: "deepseek/deepseek-chat",
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.4,
+        max_tokens: 600,
+      }),
+    });
+    if (!res.ok) throw new Error("API error");
+    const data = await res.json();
+    const text = data.choices?.[0]?.message?.content || "";
+
+    const optimizedMatch = text.match(/OPTIMIZED_ANSWER:\s*(.+?)(?=OWNERSHIP_ISSUES:|$)/s);
+    const ownershipMatch = text.match(/OWNERSHIP_ISSUES:\s*(.+?)(?=METRIC_GAPS:|$)/s);
+    const metricMatch = text.match(/METRIC_GAPS:\s*(.+?)$/s);
+
+    const ownershipRaw = ownershipMatch?.[1]?.trim() || "none";
+    const metricRaw = metricMatch?.[1]?.trim() || "none";
+
+    return {
+      optimizedAnswer: optimizedMatch?.[1]?.trim().replace(/^["']|["']$/g, "") || "",
+      ownershipIssues: ownershipRaw === "none" ? [] : ownershipRaw.split(",").map(s => s.trim()).filter(Boolean),
+      metricGaps: metricRaw === "none" ? [] : metricRaw.split(",").map(s => s.trim()).filter(Boolean),
+    };
+  } catch {
+    return { optimizedAnswer: "", ownershipIssues: [], metricGaps: [] };
+  }
+}

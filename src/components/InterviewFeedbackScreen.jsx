@@ -76,34 +76,50 @@ export default function InterviewFeedbackScreen({
 
     async function updateXP() {
       try {
-        const { doc, getDoc, updateDoc, setDoc, increment } = await import("firebase/firestore");
+        const { doc, getDoc, setDoc, increment } = await import("firebase/firestore");
         const { db } = await import("../lib/firebase.js");
         const { getRankFromXP } = await import("../hooks/useProgress.js");
         const profileRef = doc(db, "users", user.uid, "profile", "main");
-        const snap = await getDoc(profileRef);
         const today = new Date().toISOString().slice(0, 10);
-        if (snap.exists()) {
-          const cur = snap.data();
-          const newXP = (cur.xp || 0) + xpEarned;
-          const newRank = getRankFromXP(newXP);
-          await updateDoc(profileRef, { xp: newXP, rank: newRank, lastPlayedDate: today, sessionsCount: increment(1) });
-          try {
-            const cacheKey = `fluentpm_profile_${user.uid}`;
-            const existing = JSON.parse(localStorage.getItem(cacheKey) || "{}");
-            const updated = { ...existing, xp: newXP, rank: newRank, streak: existing.streak || 1, lastPlayedDate: today };
-            localStorage.setItem(cacheKey, JSON.stringify(updated));
-          } catch {}
-        } else {
-          const { getRankFromXP: getRank } = await import("../hooks/useProgress.js");
-          const initXP = xpEarned;
-          const initRank = getRank(initXP);
-          await setDoc(profileRef, { xp: initXP, rank: initRank, streak: 1, lastPlayedDate: today, sessionsCount: 1 });
-          try {
-            const cacheKey = `fluentpm_profile_${user.uid}`;
-            localStorage.setItem(cacheKey, JSON.stringify({ xp: initXP, rank: initRank, streak: 1, lastPlayedDate: today }));
-          } catch {}
-        }
-      } catch (e) { console.error("XP update error:", e); }
+
+        // Read current XP to compute new rank (rank is derived from total XP)
+        let currentXP = 0;
+        let currentStreak = 1;
+        try {
+          const snap = await getDoc(profileRef);
+          if (snap.exists()) {
+            currentXP = snap.data().xp || 0;
+            currentStreak = snap.data().streak || 1;
+          }
+        } catch {}
+
+        const newXP = currentXP + xpEarned;
+        const newRank = getRankFromXP(newXP);
+
+        // setDoc with merge:true creates the document if missing, merges if exists
+        await setDoc(profileRef, {
+          xp: newXP,
+          rank: newRank,
+          lastPlayedDate: today,
+          sessionsCount: increment(1),
+          interviewsCount: increment(1),
+          streak: Math.max(1, currentStreak),
+        }, { merge: true });
+
+        // Update localStorage cache
+        try {
+          const cacheKey = `fluentpm_profile_${user.uid}`;
+          const existing = JSON.parse(localStorage.getItem(cacheKey) || "{}");
+          localStorage.setItem(cacheKey, JSON.stringify({
+            ...existing, xp: newXP, rank: newRank, lastPlayedDate: today,
+          }));
+        } catch {}
+
+      } catch (e) {
+        console.error("XP update error:", e.code, e.message);
+        // Surface failure visibly in dev
+        if (import.meta.env.DEV) alert(`XP save failed: ${e.code} ${e.message}`);
+      }
     }
     updateXP();
   }, [user?.uid, interviewFeedback?.verdict]);
@@ -148,6 +164,9 @@ export default function InterviewFeedbackScreen({
 
   const [phrasesSaving, setPhrasesSaving] = useState(false);
   const [phrasesSaved, setPhrasesSaved] = useState(false);
+  const [optimizedData, setOptimizedData] = useState(null);
+  const [loadingOptimized, setLoadingOptimized] = useState(false);
+  const [showOptimized, setShowOptimized] = useState(false);
 
   async function savePhrasesToLexicon() {
     if (!sampleStrongAnswer || phrasesSaving || phrasesSaved) return;
@@ -175,6 +194,21 @@ export default function InterviewFeedbackScreen({
     } finally {
       setPhrasesSaving(false);
     }
+  }
+
+  async function loadOptimized() {
+    if (optimizedData || loadingOptimized) return;
+    setLoadingOptimized(true);
+    try {
+      const { generateOptimizedAnswer } = await import("../lib/openrouter.js");
+      const result = await generateOptimizedAnswer(
+        interviewFeedback.transcript || "",
+        interviewFeedback.questionText || interviewData?.question?.text || "",
+        interviewFeedback.questionType || "behavioral"
+      );
+      setOptimizedData(result);
+    } catch {}
+    setLoadingOptimized(false);
   }
 
   // Dimension comparison data
@@ -478,6 +512,231 @@ export default function InterviewFeedbackScreen({
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Executive Presence Dashboard */}
+      {(() => {
+        const totalWords = interviewFeedback.transcript
+          ? interviewFeedback.transcript.split(/\s+/).filter(Boolean).length
+          : 0;
+        const totalFillers = Object.values(interviewFeedback.fillerCounts || {}).reduce((a, b) => a + b, 0);
+        const fillerDensity = totalWords > 0 ? Math.round((totalFillers / totalWords) * 100) : 0;
+        const wpm = interviewFeedback.wpm;
+
+        const fillerScore = Math.max(0, 100 - fillerDensity * 5);
+        const pacingScore = !wpm ? null : wpm < 100 ? 60 : wpm > 200 ? 65 : wpm > 170 ? 85 : 100;
+        const presenceScore = pacingScore
+          ? Math.round((fillerScore * 0.6 + pacingScore * 0.4))
+          : fillerScore;
+
+        const presenceColor = presenceScore >= 75 ? "#10b981" : presenceScore >= 50 ? "#f59e0b" : "#f43f5e";
+        const presenceLabel = presenceScore >= 75 ? "Strong Presence" : presenceScore >= 50 ? "Developing" : "Needs Work";
+
+        const topFillers = Object.entries(interviewFeedback.fillerCounts || {})
+          .sort(([,a],[,b]) => b-a).slice(0, 4);
+
+        return (
+          <div style={{ background: "rgba(15,16,40,0.82)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16, padding: "18px 20px", marginBottom: 16 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "1px", marginBottom: 14 }}>
+              🎙 Executive Presence
+            </div>
+
+            {/* Presence score */}
+            <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 16 }}>
+              <div style={{ textAlign: "center", flexShrink: 0 }}>
+                <div style={{ fontSize: 44, fontWeight: 900, color: presenceColor, lineHeight: 1 }}>{presenceScore}</div>
+                <div style={{ fontSize: 10, color: presenceColor, fontWeight: 700, marginTop: 2 }}>{presenceLabel}</div>
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ height: 8, background: "rgba(255,255,255,0.06)", borderRadius: 4, overflow: "hidden", marginBottom: 12 }}>
+                  <div style={{ height: "100%", width: `${presenceScore}%`, background: `linear-gradient(90deg, ${presenceColor}, ${presenceColor}aa)`, borderRadius: 4, transition: "width 1s ease" }} />
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  {[
+                    { label: "Filler Density", value: `${fillerDensity}%`, subtext: `${totalFillers} fillers / ${totalWords} words`, good: fillerDensity < 5 },
+                    { label: "Pacing (WPM)", value: wpm ? `${wpm}` : "n/a", subtext: !wpm ? "Voice data unavailable" : wpm < 100 ? "Too slow" : wpm > 180 ? "Too fast" : "Good pace", good: wpm && wpm >= 100 && wpm <= 180 },
+                  ].map(m => (
+                    <div key={m.label} style={{ background: "rgba(255,255,255,0.04)", borderRadius: 10, padding: "10px 12px" }}>
+                      <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600, marginBottom: 2 }}>{m.label}</div>
+                      <div style={{ fontSize: 20, fontWeight: 800, color: m.good ? "#10b981" : "#f59e0b", lineHeight: 1 }}>{m.value}</div>
+                      <div style={{ fontSize: 10, color: "#64748b", marginTop: 2 }}>{m.subtext}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Filler breakdown */}
+            {topFillers.length > 0 && (
+              <>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>Filler Words</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {topFillers.map(([word, count]) => (
+                    <div key={word} style={{ background: "rgba(244,63,94,0.08)", border: "1px solid rgba(244,63,94,0.2)", borderRadius: 20, padding: "4px 12px", display: "flex", gap: 6, alignItems: "center" }}>
+                      <span style={{ fontSize: 12, color: "#fca5a5", fontWeight: 600 }}>"{word}"</span>
+                      <span style={{ fontSize: 11, color: "#f43f5e", fontWeight: 700 }}>×{count}</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* Pivot Timeline */}
+      {interviewFeedback.conversationLog && interviewFeedback.conversationLog.length > 0 && (() => {
+        const turns = interviewFeedback.conversationLog;
+        const HAS_METRIC = /\d+%|\d+x|\$[\d,]+|\d+\s*(users|customers|revenue|points|percent|days|weeks|months|million|billion|k\b)/i;
+
+        // Build pivot analysis — for each interviewer turn after the opener, check if next user turn has metrics
+        const pivots = [];
+        for (let i = 0; i < turns.length; i++) {
+          const turn = turns[i];
+          if (turn.role === "opponent" && i > 0) {
+            const isProbe = /\?|how did you|can you|what was|tell me more|why did|give me|specifically|measure|metric|number|result/i.test(turn.text);
+            const nextUserTurn = turns.slice(i + 1).find(t => t.role === "user");
+            const hasMetric = nextUserTurn ? HAS_METRIC.test(nextUserTurn.text) : false;
+
+            pivots.push({
+              interviewerText: turn.text.slice(0, 120) + (turn.text.length > 120 ? "…" : ""),
+              isProbe,
+              hasMetric,
+              userResponse: nextUserTurn?.text?.slice(0, 100) + (nextUserTurn?.text?.length > 100 ? "…" : "") || null,
+            });
+          }
+        }
+
+        const missedMetrics = pivots.filter(p => p.isProbe && !p.hasMetric).length;
+
+        return (
+          <div style={{ background: "rgba(15,16,40,0.82)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16, padding: "18px 20px", marginBottom: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "1px" }}>
+                📍 Interview Timeline
+              </div>
+              {missedMetrics > 0 && (
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#f43f5e", background: "rgba(244,63,94,0.1)", border: "1px solid rgba(244,63,94,0.2)", borderRadius: 20, padding: "3px 10px" }}>
+                  {missedMetrics} missed metric trigger{missedMetrics !== 1 ? "s" : ""}
+                </div>
+              )}
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {pivots.map((pivot, i) => (
+                <div key={i} style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+                  {/* Timeline dot */}
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 0, flexShrink: 0 }}>
+                    <div style={{
+                      width: 28, height: 28, borderRadius: "50%", flexShrink: 0,
+                      background: pivot.isProbe
+                        ? (pivot.hasMetric ? "rgba(16,185,129,0.15)" : "rgba(244,63,94,0.15)")
+                        : "rgba(255,255,255,0.05)",
+                      border: `2px solid ${pivot.isProbe ? (pivot.hasMetric ? "#10b981" : "#f43f5e") : "rgba(255,255,255,0.1)"}`,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      fontSize: 12,
+                    }}>
+                      {pivot.isProbe ? (pivot.hasMetric ? "✓" : "!") : "→"}
+                    </div>
+                    {i < pivots.length - 1 && <div style={{ width: 2, flex: 1, minHeight: 12, background: "rgba(255,255,255,0.06)", marginTop: 2 }} />}
+                  </div>
+
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 4 }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: "#64748b" }}>Interviewer</span>
+                      {pivot.isProbe && (
+                        <span style={{ fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 10, background: "rgba(245,158,11,0.15)", color: "#f59e0b" }}>PROBE</span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.5, marginBottom: pivot.isProbe ? 6 : 0 }}>"{pivot.interviewerText}"</div>
+                    {pivot.isProbe && pivot.userResponse && (
+                      <div style={{ fontSize: 11, color: pivot.hasMetric ? "#10b981" : "#f43f5e", lineHeight: 1.5, display: "flex", gap: 6, alignItems: "flex-start" }}>
+                        <span style={{ flexShrink: 0, fontWeight: 700 }}>{pivot.hasMetric ? "✓ Metric included" : "✗ No metric"}</span>
+                        {!pivot.hasMetric && <span style={{ color: "#64748b" }}>— add a specific number here</span>}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {missedMetrics === 0 && pivots.filter(p => p.isProbe).length > 0 && (
+              <div style={{ marginTop: 10, padding: "8px 12px", background: "rgba(16,185,129,0.08)", borderRadius: 8, fontSize: 12, color: "#10b981" }}>
+                ✓ You included metrics in all probe responses
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* Transcript Analysis */}
+      {interviewFeedback.transcript && (
+        <div style={{ background: "rgba(15,16,40,0.82)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16, marginBottom: 16, overflow: "hidden" }}>
+          <button
+            onClick={() => { setShowOptimized(v => !v); if (!optimizedData) loadOptimized(); }}
+            style={{ width: "100%", padding: "18px 20px", background: "none", border: "none", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}
+          >
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "1px" }}>
+              📝 Transcript Analysis
+            </div>
+            <span style={{ fontSize: 18, color: "#64748b" }}>{showOptimized ? "−" : "+"}</span>
+          </button>
+
+          {showOptimized && (
+            <div style={{ padding: "0 20px 20px" }}>
+              {/* Side by side: Your Answer vs Gold Standard */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
+                {/* User's transcript */}
+                <div>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>Your Answer</div>
+                  <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 10, padding: "12px 14px", fontSize: 12, color: "#94a3b8", lineHeight: 1.7 }}>
+                    {/* Highlight "we/our/us" in amber */}
+                    {interviewFeedback.transcript.split(/\b(we|our|us|they|the team)\b/gi).map((part, i) =>
+                      /^(we|our|us|they|the team)$/i.test(part)
+                        ? <mark key={i} style={{ background: "rgba(245,158,11,0.25)", color: "#fcd34d", borderRadius: 2, padding: "0 1px" }}>{part}</mark>
+                        : <span key={i}>{part}</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* AI optimized */}
+                <div>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "#10b981", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>Gold Standard</div>
+                  <div style={{ background: "rgba(16,185,129,0.04)", border: "1px solid rgba(16,185,129,0.15)", borderRadius: 10, padding: "12px 14px", fontSize: 12, color: "#a7f3d0", lineHeight: 1.7 }}>
+                    {loadingOptimized && <div style={{ color: "#64748b", fontStyle: "italic" }}>Generating optimized answer…</div>}
+                    {optimizedData?.optimizedAnswer || (!loadingOptimized && "—")}
+                  </div>
+                </div>
+              </div>
+
+              {/* Ownership issues */}
+              {optimizedData?.ownershipIssues?.length > 0 && (
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "#f59e0b", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>⚠ Ownership Signals to Fix</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {optimizedData.ownershipIssues.map((issue, i) => (
+                      <span key={i} style={{ fontSize: 11, color: "#fcd34d", background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.2)", borderRadius: 20, padding: "3px 10px" }}>"{issue}"</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Metric gaps */}
+              {optimizedData?.metricGaps?.length > 0 && (
+                <div>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "#6366f1", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>📊 Add Metrics Here</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    {optimizedData.metricGaps.map((gap, i) => (
+                      <div key={i} style={{ fontSize: 11, color: "#a5b4fc", display: "flex", gap: 6, alignItems: "flex-start" }}>
+                        <span style={{ color: "#6366f1", flexShrink: 0 }}>→</span>{gap}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 

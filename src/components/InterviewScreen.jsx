@@ -12,6 +12,18 @@ import { addToQuestionHistory } from "../lib/questionHistory.js";
 
 const MAX_TURNS = 5;
 
+// ── Timeout helper ─────────────────────────────────────────────────────────────
+
+function withTimeout(promise, ms, fallback) {
+  const timeout = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error("timeout")), ms)
+  );
+  return Promise.race([promise, timeout]).catch(err => {
+    if (err.message === "timeout" && fallback !== undefined) return fallback;
+    throw err;
+  });
+}
+
 const glassCard = {
   background: "rgba(255,255,255,0.06)",
   border: "1px solid rgba(255,255,255,0.1)",
@@ -351,13 +363,14 @@ export default function InterviewScreen({
 
     setIsTyping(true);
     try {
-      const { reply, interviewFeedback } = await sendInterviewMessage(
-        apiMessages,
-        interviewer,
-        question,
-        questionType,
-        sessionMetricsRef.current
+      const { reply, interviewFeedback } = await withTimeout(
+        sendInterviewMessage(apiMessages, interviewer, question, questionType, sessionMetricsRef.current),
+        28000,
+        null
       );
+      if (!reply && !interviewFeedback) {
+        throw new Error("Request timed out — please try again.");
+      }
 
       setProcessingPhase("speaking");
       const cleanReply = cleanInterviewerText(reply);
@@ -384,6 +397,8 @@ export default function InterviewScreen({
             .filter(m => m.role === "user")
             .map(m => m.text)
             .join(" "),
+          conversationLog: updatedMessages,
+          wpm: sessionMetricsRef.current?.wpm || null,
           date: new Date().toISOString().slice(0, 10),
           timestamp: new Date().toISOString(),
           uid: user.uid,
@@ -445,9 +460,12 @@ export default function InterviewScreen({
     setMicState("sending");
     setIsTyping(true);
     try {
-      const { reply, interviewFeedback: fb } = await sendInterviewMessage(
-        apiMessages, interviewer, question, questionType
+      const result = await withTimeout(
+        sendInterviewMessage(apiMessages, interviewer, question, questionType),
+        28000,
+        null
       );
+      const { reply, interviewFeedback: fb } = result || {};
       const cleanReply = cleanInterviewerText(reply);
       if (cleanReply) {
         setMessages(prev => [...prev, { role: "opponent", text: cleanReply }]);
@@ -469,6 +487,8 @@ export default function InterviewScreen({
         questionText: question.text,
         questionId: question.id,
         transcript: messages.filter(m => m.role === "user").map(m => m.text).join(" "),
+        conversationLog: messages,
+        wpm: sessionMetricsRef.current?.wpm || null,
         date: new Date().toISOString().slice(0, 10),
         uid: user.uid,
       };
@@ -627,7 +647,29 @@ export default function InterviewScreen({
           {error && (
             <div style={styles.errorBanner}>
               <span>{error}</span>
-              <button onClick={() => setError(null)} style={styles.errorDismiss}>✕</button>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <button
+                  onClick={() => {
+                    setError(null);
+                    setMicState("idle");
+                    setProcessingPhase("idle");
+                    setIsTyping(false);
+                  }}
+                  style={{
+                    background: "rgba(99,102,241,0.2)",
+                    border: "1px solid rgba(99,102,241,0.4)",
+                    borderRadius: 8,
+                    color: "#a5b4fc",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    padding: "4px 10px",
+                    cursor: "pointer",
+                  }}
+                >
+                  Retry
+                </button>
+                <button onClick={() => setError(null)} style={styles.errorDismiss}>✕</button>
+              </div>
             </div>
           )}
 

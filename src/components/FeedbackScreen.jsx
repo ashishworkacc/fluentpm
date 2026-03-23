@@ -358,10 +358,16 @@ export default function FeedbackScreen({ user, sessionData, opponent, setCurrent
         });
 
         const profileRef = doc(db, "users", user.uid, "profile", "main");
-        const profileSnap = await getDoc(profileRef);
         const today = getTodayDateString();
 
-        if (profileSnap.exists()) {
+        let profileSnap = null;
+        try {
+          profileSnap = await getDoc(profileRef);
+        } catch (getDocErr) {
+          console.warn("getDoc failed, defaulting to setDoc path:", getDocErr.message);
+        }
+
+        if (profileSnap && profileSnap.exists()) {
           const current = profileSnap.data();
           const lastPlayed = current.lastPlayedDate;
           const yesterday = new Date();
