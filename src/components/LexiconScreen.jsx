@@ -711,6 +711,11 @@ export default function LexiconScreen({ user, setCurrentScreen }) {
           return tb - ta;
         });
       setItems(data);
+      // Re-trigger enrichment for any items that are still pending (e.g. after a page reload)
+      const pending = data.filter(it => it.status === "pending_enrichment" && it.expression);
+      if (pending.length > 0 && !bgEnrichRef.current) {
+        runBackgroundEnrichment(pending.map(it => ({ expr: it.expression, id: it.id })));
+      }
     } catch (err) {
       console.warn("Failed to fetch lexicon:", err.message);
     }
@@ -768,27 +773,29 @@ export default function LexiconScreen({ user, setCurrentScreen }) {
     bgEnrichRef.current = true;
     setBgEnrichProgress({ current: 0, total: docIds.length });
 
-    for (let i = 0; i < docIds.length; i++) {
-      const { expr, id } = docIds[i];
-      try {
-        const enriched = await enrichExpression(expr);
-        if (enriched) {
-          await updateDoc(doc(db, "users", user.uid, "lexicon", id), { enriched, status: "new" });
-          // Update local state directly — no fetchLexicon() round-trip needed
-          setItems(prev => prev.map(it =>
-            it.id === id ? { ...it, enriched, status: "new" } : it
-          ));
+    try {
+      for (let i = 0; i < docIds.length; i++) {
+        const { expr, id } = docIds[i];
+        try {
+          const enriched = await enrichExpression(expr);
+          if (enriched) {
+            await updateDoc(doc(db, "users", user.uid, "lexicon", id), { enriched, status: "new" });
+            // Update local state directly — no fetchLexicon() round-trip needed
+            setItems(prev => prev.map(it =>
+              it.id === id ? { ...it, enriched, status: "new" } : it
+            ));
+          }
+        } catch (enrichErr) {
+          logFailure(user, "Lexicon", SEVERITY.MEDIUM, "Background enrichment", enrichErr, { expression: expr });
         }
-      } catch (enrichErr) {
-        logFailure(user, "Lexicon", SEVERITY.MEDIUM, "Background enrichment", enrichErr, { expression: expr });
+        setBgEnrichProgress({ current: i + 1, total: docIds.length });
       }
-      setBgEnrichProgress({ current: i + 1, total: docIds.length });
+    } finally {
+      setBgEnrichProgress(null);
+      bgEnrichRef.current = false;
+      // Single refresh at the very end to sync anything missed
+      fetchLexicon();
     }
-
-    setBgEnrichProgress(null);
-    bgEnrichRef.current = false;
-    // Single refresh at the very end to sync anything missed
-    fetchLexicon();
   }
 
   async function handleMarkMastered(itemId) {

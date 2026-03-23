@@ -13,6 +13,7 @@ const MAX_TURNS = 3;
 function cleanOpponentText(raw) {
   if (!raw) return "";
   return raw
+    .replace(/<think>[\s\S]*?<\/think>/gi, "")  // strip DeepSeek internal reasoning
     .split("###FEEDBACK###")[0]
     .split("###INTERVIEW_FEEDBACK###")[0]
     .replace(/\[.*?\]/g, "")

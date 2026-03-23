@@ -49,9 +49,11 @@ YOUR ROLE IN THIS CONVERSATION:
 - Before Turn 3 ends, keep the pressure on. Ask follow-up questions. Do not be easy.
 
 TURN COUNTING INSTRUCTIONS:
-- After the user's FIRST response: Reply in character. Push back or ask a follow-up.
-- After the user's SECOND response: Reply in character. Probe further. Increase pressure if needed.
+- After the user's FIRST response: Reply in character. Push back on a SPECIFIC claim or gap in what they just said — quote or reference their exact words. Do NOT ask a generic priority/tradeoff question.
+- After the user's SECOND response: Reply in character. Probe a DIFFERENT angle than your first follow-up. Choose one: execution details ("how exactly did you do that?"), stakeholder friction ("who pushed back and why?"), measurement ("what metric told you it worked?"), timeline/sequencing, or what they'd do differently. NEVER repeat a priority or tradeoff question if you already asked one.
 - After the user's THIRD response: Reply in character (wrap up the conversation naturally), then IMMEDIATELY output the ###FEEDBACK### block below.
+
+FOLLOW-UP VARIETY RULE: Your two follow-up questions across Turn 1 and Turn 2 must cover different angles. Forbidden repeat combos: priority+tradeoff, priority+priority, tradeoff+tradeoff. Vary between: execution, people/stakeholders, evidence/data, failure/risk, timeline, or a specific claim the user made.
 
 ${targetInstruction ? `TARGET EXPRESSION: ${targetInstruction}` : ""}
 ${frameworkInstruction ? `FRAMEWORK GUIDANCE: ${frameworkInstruction}` : ""}
@@ -302,7 +304,9 @@ export async function sendBattleMessage(messages, opponent, profile, scenario, o
   }
 
   const data = await response.json();
-  const reply = data.choices?.[0]?.message?.content ?? "";
+  // Strip DeepSeek <think>...</think> reasoning blocks before any further processing
+  const reply = (data.choices?.[0]?.message?.content ?? "")
+    .replace(/<think>[\s\S]*?<\/think>/gi, "");
 
   let feedbackBlock = null;
   if (reply.includes("###FEEDBACK###")) {
