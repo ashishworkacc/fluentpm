@@ -219,8 +219,9 @@ function DebriefCard({ debrief, onView, isSelected }) {
     : (debrief.aiScore != null ? `${debrief.aiScore}/10` : "—");
   const tip = debrief.verdictReason || debrief.strongestMoment || debrief.coachTip || debrief.tip || "";
   const truncatedTip = tip.length > 80 ? tip.slice(0, 80) + "…" : tip;
-  const dateStr = debrief.date || (debrief.savedAt ? new Date(debrief.savedAt).toISOString().slice(0, 10) : "");
-  const displayDate = dateStr ? new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "";
+  const rawSavedAt = toSortDate(debrief.savedAt || debrief.timestamp);
+  const dateStr = debrief.date || rawSavedAt.slice(0, 10);
+  const displayDate = dateStr ? (() => { try { return new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric" }); } catch { return ""; } })() : "";
 
   return (
     <div style={{
