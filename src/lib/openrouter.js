@@ -780,3 +780,127 @@ export async function scoreLightningRound(
     return null;
   }
 }
+
+// ── Score Contextual Usage ────────────────────────────────────────────────────
+
+/**
+ * Score a user's attempt at using an expression in context.
+ * Returns { score: 1-5, feedback: string, isNatural: boolean }
+ */
+export async function scoreContextualUsage(expression, userSentence) {
+  const prompt = `You are a communication coach for product managers.
+
+The user is practicing the expression: "${expression}"
+
+Their attempt: "${userSentence}"
+
+Evaluate their usage. Consider:
+1. Did they use the expression naturally (not forced)?
+2. Does it fit a professional PM context?
+3. Is the sentence clear and complete?
+
+Respond with EXACTLY this format:
+SCORE: [1-5]
+IS_NATURAL: [yes|no]
+FEEDBACK: [2-3 sentence coaching feedback. Be specific and constructive. Start with what they did well if score >= 3.]
+EXAMPLE: [A better example sentence using the expression in a PM context]`;
+
+  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${import.meta.env.VITE_OPENROUTER_API_KEY}`,
+      "HTTP-Referer": "https://fluentpm.app",
+      "X-Title": "FluentPM",
+    },
+    body: JSON.stringify({
+      model: "deepseek/deepseek-chat",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.4,
+      max_tokens: 300,
+    }),
+  });
+
+  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  const data = await res.json();
+  const text = data.choices?.[0]?.message?.content || "";
+
+  const scoreMatch = text.match(/SCORE:\s*(\d)/);
+  const naturalMatch = text.match(/IS_NATURAL:\s*(yes|no)/i);
+  const feedbackMatch = text.match(/FEEDBACK:\s*(.+?)(?=EXAMPLE:|$)/s);
+  const exampleMatch = text.match(/EXAMPLE:\s*(.+?)$/s);
+
+  return {
+    score: scoreMatch ? parseInt(scoreMatch[1]) : 3,
+    isNatural: naturalMatch ? naturalMatch[1].toLowerCase() === "yes" : true,
+    feedback: feedbackMatch ? feedbackMatch[1].trim() : "Good attempt. Keep practicing!",
+    example: exampleMatch ? exampleMatch[1].trim() : null,
+  };
+}
+
+// ── Clean Bulk Input with AI ──────────────────────────────────────────────────
+
+/**
+ * Use AI to clean and normalize a list of expressions/questions before saving.
+ * Removes duplicates, fixes formatting, strips numbering.
+ * Returns cleaned array of strings.
+ */
+export async function cleanBulkInputWithAI(lines, type = "expression") {
+  if (lines.length === 0) return lines;
+
+  const isExpression = type === "expression";
+  const prompt = isExpression
+    ? `You are helping clean a list of ${lines.length} professional expressions/phrases for a vocabulary app.
+
+Raw input (one per line):
+${lines.map((l, i) => `${i + 1}. ${l}`).join("\n")}
+
+Clean this list:
+1. Remove any numbering or bullet points
+2. Fix obvious typos
+3. Remove duplicates (keep first occurrence)
+4. Remove anything that is not a professional expression or phrase (e.g. URLs, junk)
+5. Trim whitespace
+6. Keep max 50 items
+
+Return ONLY the cleaned expressions, one per line, no numbering, no extra text.`
+    : `You are helping clean a list of ${lines.length} interview questions for a PM interview prep app.
+
+Raw input (one per line):
+${lines.map((l, i) => `${i + 1}. ${l}`).join("\n")}
+
+Clean this list:
+1. Remove numbering/bullets
+2. Fix typos and grammar
+3. Remove duplicates
+4. Ensure each line is a proper interview question (ends with ?)
+5. Remove non-questions (URLs, gibberish)
+6. Keep max 100 items
+
+Return ONLY the cleaned questions, one per line, no numbering, no extra text.`;
+
+  try {
+    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${import.meta.env.VITE_OPENROUTER_API_KEY}`,
+        "HTTP-Referer": "https://fluentpm.app",
+        "X-Title": "FluentPM",
+      },
+      body: JSON.stringify({
+        model: "deepseek/deepseek-chat",
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.2,
+        max_tokens: 2000,
+      }),
+    });
+    if (!res.ok) throw new Error("API error");
+    const data = await res.json();
+    const text = data.choices?.[0]?.message?.content || "";
+    const cleaned = text.split("\n").map(l => l.trim()).filter(Boolean);
+    return cleaned.length > 0 ? cleaned : lines;
+  } catch {
+    return lines;
+  }
+}

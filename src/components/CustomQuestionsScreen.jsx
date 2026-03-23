@@ -112,7 +112,9 @@ export default function CustomQuestionsScreen({ user, setCurrentScreen, setCusto
   const [bulkText, setBulkText] = useState("");
   const [importing, setImporting] = useState(false);
   const [importMsg, setImportMsg] = useState("");
+  const [importProgress, setImportProgress] = useState(null);
   const [pickerQuestion, setPickerQuestion] = useState(null);
+  const [aiCleaning, setAiCleaning] = useState(false);
 
   useEffect(() => {
     fetchQuestions();
@@ -151,28 +153,37 @@ export default function CustomQuestionsScreen({ user, setCurrentScreen, setCusto
   }
 
   async function handleBulkImport() {
-    const lines = bulkText.split("\n").map(l => l.trim()).filter(Boolean).slice(0, 50);
+    const lines = bulkText.split("\n").map(l => l.trim()).filter(Boolean).slice(0, 100);
     if (lines.length === 0) return;
     setImporting(true);
     setImportMsg("");
+    setImportProgress({ current: 0, total: lines.length });
 
+    const BATCH_SIZE = 10;
+    let imported = 0;
     try {
       const ref = collection(db, "users", user.uid, "customQuestions");
-      await Promise.all(lines.map(text =>
-        addDoc(ref, {
-          text,
-          source: "custom",
-          addedAt: new Date().toISOString(),
-          attempts: 0,
-          bestScore: null,
-          lastAttempted: null,
-        })
-      ));
-
+      for (let i = 0; i < lines.length; i += BATCH_SIZE) {
+        const batch = lines.slice(i, i + BATCH_SIZE);
+        await Promise.all(batch.map(text =>
+          addDoc(ref, {
+            text,
+            source: "custom",
+            addedAt: new Date().toISOString(),
+            attempts: 0,
+            bestScore: null,
+            lastAttempted: null,
+          })
+        ));
+        imported += batch.length;
+        setImportProgress({ current: imported, total: lines.length });
+        if (i + BATCH_SIZE < lines.length) {
+          await new Promise(r => setTimeout(r, 200));
+        }
+      }
       setBulkText("");
-      setImportMsg(`✓ Imported ${lines.length} question${lines.length !== 1 ? "s" : ""}`);
+      setImportMsg(`✓ Imported ${imported} question${imported !== 1 ? "s" : ""}`);
       setTimeout(() => setImportMsg(""), 4000);
-      // Bust cache so we freshly fetch including new additions
       bustQCache(user.uid);
       await fetchQuestions();
     } catch (err) {
@@ -180,6 +191,7 @@ export default function CustomQuestionsScreen({ user, setCurrentScreen, setCusto
       setImportMsg("Import failed — check your connection and try again");
     } finally {
       setImporting(false);
+      setImportProgress(null);
     }
   }
 
@@ -190,6 +202,18 @@ export default function CustomQuestionsScreen({ user, setCurrentScreen, setCusto
     } catch (err) {
       console.error("Delete error:", err);
     }
+  }
+
+  async function handleAIClean() {
+    const lines = bulkText.split("\n").map(l => l.trim()).filter(Boolean);
+    if (lines.length === 0) return;
+    setAiCleaning(true);
+    try {
+      const { cleanBulkInputWithAI } = await import("../lib/openrouter.js");
+      const cleaned = await cleanBulkInputWithAI(lines, "question");
+      setBulkText(cleaned.join("\n"));
+    } catch {}
+    finally { setAiCleaning(false); }
   }
 
   // Step 1: show interviewer picker
@@ -268,11 +292,20 @@ export default function CustomQuestionsScreen({ user, setCurrentScreen, setCusto
         />
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
           <span style={{ fontSize: 12, color: "#64748b" }}>
-            {bulkLineCount > 0 ? `${Math.min(bulkLineCount, 50)} question${bulkLineCount !== 1 ? "s" : ""} to import` : "One question per line"}
+            {bulkLineCount > 0 ? `${Math.min(bulkLineCount, 100)} question${bulkLineCount !== 1 ? "s" : ""} to import` : "One question per line"}
           </span>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             {importMsg && (
               <span style={{ fontSize: 12, color: importMsg.includes("failed") ? "#f43f5e" : "#10b981", fontWeight: 600 }}>{importMsg}</span>
+            )}
+            {bulkLineCount > 2 && (
+              <button
+                onClick={handleAIClean}
+                disabled={aiCleaning}
+                style={{ padding: "10px 16px", background: "rgba(139,92,246,0.1)", border: "1px solid rgba(139,92,246,0.2)", borderRadius: 10, color: "#a78bfa", fontSize: 13, fontWeight: 700, cursor: "pointer" }}
+              >
+                {aiCleaning ? "Cleaning…" : "✨ AI Clean"}
+              </button>
             )}
             <button
               onClick={handleBulkImport}
@@ -287,7 +320,7 @@ export default function CustomQuestionsScreen({ user, setCurrentScreen, setCusto
                 minWidth: 120,
               }}
             >
-              {importing ? `Importing ${bulkLineCount}…` : `Import${bulkLineCount > 0 ? ` ${Math.min(bulkLineCount, 50)}` : ""}`}
+              {importing ? (importProgress ? `Importing ${importProgress.current}/${importProgress.total}…` : "Importing…") : `Import${bulkLineCount > 0 ? ` ${Math.min(bulkLineCount, 100)}` : ""}`}
             </button>
           </div>
         </div>

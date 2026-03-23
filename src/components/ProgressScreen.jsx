@@ -451,6 +451,7 @@ export default function ProgressScreen({ user, setCurrentScreen }) {
   const [currentXP, setCurrentXP] = useState(cached.xp || 0);
   const [streak, setStreak] = useState(cached.streak || 0);
   const [sessionsCount, setSessionsCount] = useState(cached.sessionsCount || 0);
+  const [profileLoaded, setProfileLoaded] = useState(!!(cached.xp || cached.rank !== undefined));
 
   useEffect(() => {
     fetchAll();
@@ -477,6 +478,7 @@ export default function ProgressScreen({ user, setCurrentScreen }) {
             localStorage.setItem(key, JSON.stringify({ ...existing, xp: p.xp, rank: p.rank, streak: p.streak, sessionsCount: p.sessionsCount }));
           } catch {}
         }
+        setProfileLoaded(true);
       } catch {}
 
       // 2. Fetch arena sessions
@@ -576,12 +578,21 @@ export default function ProgressScreen({ user, setCurrentScreen }) {
       )}
 
       {/* Stats Row — 2x2 grid */}
-      <div style={styles.statsGrid}>
-        <StatPill label="Total Sessions" value={sessionsCount} icon="🎯" />
-        <StatPill label="Current Streak" value={streak > 0 ? `🔥 ${streak}d` : "0 days"} icon={null} />
-        <StatPill label="Avg AI Score" value={avgScore ?? "—"} icon="📊" />
-        <StatPill label="Best Score" value={bestScore ?? "—"} icon="⭐" />
-      </div>
+      {(loading && !profileLoaded) ? (
+        <div style={{ ...styles.statsGrid, marginBottom: 12 }}>
+          <SkeletonCard height={90} />
+          <SkeletonCard height={90} />
+          <SkeletonCard height={90} />
+          <SkeletonCard height={90} />
+        </div>
+      ) : (
+        <div style={styles.statsGrid}>
+          <StatPill label="Total Sessions" value={(!profileLoaded && loading) ? "—" : sessionsCount} icon="🎯" />
+          <StatPill label="Current Streak" value={(!profileLoaded && loading) ? "—" : (streak > 0 ? `🔥 ${streak}d` : "0 days")} icon={null} />
+          <StatPill label="Avg AI Score" value={avgScore ?? "—"} icon="📊" />
+          <StatPill label="Best Score" value={bestScore ?? "—"} icon="⭐" />
+        </div>
+      )}
 
       {/* 7-Day Score Chart */}
       {loading ? (

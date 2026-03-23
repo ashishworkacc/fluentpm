@@ -399,6 +399,17 @@ function DailyChallengeCard({ opponent, scenario, onEnterArena, onShuffle }) {
   );
 }
 
+// ── Quick-access feature cards ────────────────────────────────────────────────
+
+const QUICK_FEATURES = [
+  { id: "lightning",       icon: "⚡", label: "Lightning Round", desc: "Practice saved expressions" },
+  { id: "quickDrill",      icon: "🎯", label: "Quick Drill",     desc: "30-sec answer challenges"  },
+  { id: "pushbackDrill",   icon: "💪", label: "Pushback Drill",  desc: "Handle tough objections"   },
+  { id: "storyBank",       icon: "📖", label: "Story Bank",      desc: "Manage your STAR stories"  },
+  { id: "league",          icon: "🏆", label: "League",          desc: "Your weekly ranking"       },
+  { id: "customQuestions", icon: "📝", label: "My Questions",    desc: "Your question bank"        },
+];
+
 // ── Main Component ────────────────────────────────────────────────────────────
 
 export default function HomeScreen({ user, setCurrentScreen, setPreBattleData, setCoachingProfile }) {
@@ -766,6 +777,26 @@ export default function HomeScreen({ user, setCurrentScreen, setPreBattleData, s
           </div>
         );
       })()}
+
+      {/* Practice Modes — quick access row */}
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "1px", marginBottom: 10 }}>
+          Practice Modes
+        </div>
+        <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
+          {QUICK_FEATURES.map(f => (
+            <button key={f.id} onClick={() => setCurrentScreen(f.id)} style={{
+              flexShrink: 0, minWidth: 120, padding: "14px 14px",
+              background: "rgba(15,16,40,0.82)", border: "1px solid rgba(255,255,255,0.08)",
+              borderRadius: 14, cursor: "pointer", textAlign: "left",
+            }}>
+              <div style={{ fontSize: 22, marginBottom: 6 }}>{f.icon}</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#f1f5f9", marginBottom: 2 }}>{f.label}</div>
+              <div style={{ fontSize: 11, color: "#64748b", lineHeight: 1.4 }}>{f.desc}</div>
+            </button>
+          ))}
+        </div>
+      </div>
 
       {/* Daily Challenge — full width on both layouts */}
       {todayDone ? (

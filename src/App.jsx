@@ -21,6 +21,7 @@ import QuickDrillScreen from "./components/QuickDrillScreen.jsx";
 import CustomQuestionsScreen from "./components/CustomQuestionsScreen.jsx";
 import ProfileScreen from "./components/ProfileScreen.jsx";
 import LeagueScreen from "./components/LeagueScreen.jsx";
+import StatsScreen from "./components/StatsScreen.jsx";
 
 // ── Window width hook ─────────────────────────────────────────────────────────
 
@@ -85,8 +86,7 @@ function LoadingScreen() {
 const NAV_TABS = [
   { id: "home",          label: "Practice",  icon: "🏠" },
   { id: "lexicon",       label: "Lexicon",   icon: "📖" },
-  { id: "progress",      label: "Progress",  icon: "📊" },
-  { id: "profile",       label: "Profile",   icon: "👤" },
+  { id: "stats",         label: "Stats",     icon: "📊" },
   { id: "interviewHome", label: "Interview", icon: "🎤" },
 ];
 
@@ -139,7 +139,10 @@ function Sidebar({ currentScreen, setCurrentScreen, user, onSignOut }) {
       {/* Nav items */}
       <nav style={{ flex: 1, padding: "14px 12px", display: "flex", flexDirection: "column", gap: 2, overflowY: "auto" }}>
         {NAV_TABS.map(tab => {
-          const active = currentScreen === tab.id;
+          const STATS_ALIASES = ["stats", "progress", "profile"];
+          const active = tab.id === "stats"
+            ? STATS_ALIASES.includes(currentScreen)
+            : currentScreen === tab.id;
           return (
             <button
               key={tab.id}
@@ -222,7 +225,10 @@ function BottomNav({ currentScreen, setCurrentScreen }) {
   return (
     <nav style={styles.bottomNav}>
       {NAV_TABS.map(tab => {
-        const active = currentScreen === tab.id;
+        const STATS_ALIASES = ["stats", "progress", "profile"];
+        const active = tab.id === "stats"
+          ? STATS_ALIASES.includes(currentScreen)
+          : currentScreen === tab.id;
         return (
           <button
             key={tab.id}
@@ -355,10 +361,14 @@ export default function App() {
         );
       case "lexicon":
         return <LexiconScreen user={user} setCurrentScreen={setCurrentScreen} />;
+      case "stats":
+        return <StatsScreen user={user} setCurrentScreen={setCurrentScreen} />;
       case "progress":
-        return <ProgressScreen user={user} setCurrentScreen={setCurrentScreen} />;
+        // backward-compat — redirect to unified StatsScreen
+        return <StatsScreen user={user} setCurrentScreen={setCurrentScreen} />;
       case "profile":
-        return <ProfileScreen user={user} setCurrentScreen={setCurrentScreen} />;
+        // backward-compat — redirect to unified StatsScreen
+        return <StatsScreen user={user} setCurrentScreen={setCurrentScreen} />;
       case "phrases":
         return <PhrasesScreen setCurrentScreen={setCurrentScreen} />;
       case "lightning":

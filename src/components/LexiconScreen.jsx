@@ -12,7 +12,7 @@ import {
 import { db } from "../lib/firebase.js";
 import { enrichExpression } from "../lib/openrouter.js";
 import { PHRASE_CATEGORIES } from "../data/phrases.js";
-import { isDueForReview, getMasteryPercent, getNextReviewLabel } from "../lib/expressionScheduler.js";
+import { isDueForReview, getMasteryPercent, getNextReviewLabel, computeNextReview } from "../lib/expressionScheduler.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -73,6 +73,19 @@ function CaptureModal({ onClose, onSave, onBulkSave }) {
   // Bulk mode state
   const [bulkText, setBulkText] = useState("");
   const [bulkProgress, setBulkProgress] = useState(null); // null | { current, total }
+  const [aiCleaning, setAiCleaning] = useState(false);
+
+  async function handleAIClean() {
+    const lines = bulkText.split("\n").map(l => l.trim()).filter(Boolean);
+    if (lines.length === 0) return;
+    setAiCleaning(true);
+    try {
+      const { cleanBulkInputWithAI } = await import("../lib/openrouter.js");
+      const cleaned = await cleanBulkInputWithAI(lines, "expression");
+      setBulkText(cleaned.join("\n"));
+    } catch {}
+    finally { setAiCleaning(false); }
+  }
 
   async function handleEnrich() {
     if (!text.trim()) return;
@@ -232,6 +245,16 @@ function CaptureModal({ onClose, onSave, onBulkSave }) {
 
             {error && <div style={styles.errorBox}>{error}</div>}
 
+            {bulkLines > 2 && (
+              <button
+                onClick={handleAIClean}
+                disabled={aiCleaning}
+                style={{ width: "100%", padding: "10px 16px", background: "rgba(139,92,246,0.1)", border: "1px solid rgba(139,92,246,0.2)", borderRadius: 10, color: "#a78bfa", fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: 8 }}
+              >
+                {aiCleaning ? "Cleaning…" : "✨ AI Clean"}
+              </button>
+            )}
+
             <button
               onClick={handleBulkImport}
               disabled={bulkLines === 0 || loading}
@@ -297,7 +320,122 @@ function ToneTab({ variants }) {
   );
 }
 
-function ExpressionCard({ item, onMarkMastered, onDelete }) {
+// ── Contextual Practice Modal ─────────────────────────────────────────────────
+
+const PM_PROMPTS = [
+  "You're presenting to a skeptical VP of Product. Use this expression to make your point land.",
+  "A cross-functional partner just pushed back on your roadmap. Respond using this expression.",
+  "You're in a sprint review and need to explain a decision. Work this expression into your response.",
+  "A new stakeholder asks why a feature was cut. Use this expression in your answer.",
+];
+
+function ContextualPracticeModal({ item, onClose, onScored }) {
+  const [userSentence, setUserSentence] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState(null);
+  const promptRef = useRef(PM_PROMPTS[Math.floor(Math.random() * PM_PROMPTS.length)]);
+
+  const wordCount = userSentence.trim().split(/\s+/).filter(Boolean).length;
+  const isReady = wordCount >= 6;
+
+  async function handleSubmit() {
+    if (!isReady) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const { scoreContextualUsage } = await import("../lib/openrouter.js");
+      const res = await scoreContextualUsage(item.expression, userSentence.trim());
+      setResult(res);
+      if (onScored) onScored(res.score);
+    } catch {
+      setError("Couldn't score your response. Check your connection.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const scoreColors = { 5: "#10b981", 4: "#10b981", 3: "#f59e0b", 2: "#f43f5e", 1: "#f43f5e" };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 1000 }}>
+      <div style={{ width: "100%", maxWidth: 680, background: "rgba(10,11,30,0.99)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "20px 20px 0 0", padding: "24px 20px 40px", maxHeight: "90vh", overflowY: "auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#6366f1", textTransform: "uppercase", letterSpacing: "1px", marginBottom: 4 }}>Contextual Practice</div>
+            <div style={{ fontSize: 20, fontWeight: 800, color: "#f1f5f9" }}>{item.expression}</div>
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "#64748b", fontSize: 20, cursor: "pointer", padding: "4px 8px" }}>✕</button>
+        </div>
+
+        {!result ? (
+          <>
+            <div style={{ background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.15)", borderRadius: 12, padding: "14px 16px", marginBottom: 16 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#818cf8", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.5px" }}>Scenario</div>
+              <div style={{ fontSize: 14, color: "#cbd5e1", lineHeight: 1.6 }}>{promptRef.current}</div>
+            </div>
+
+            <textarea
+              value={userSentence}
+              onChange={e => setUserSentence(e.target.value)}
+              placeholder={`Write a sentence using "${item.expression}"...`}
+              rows={4}
+              style={{ width: "100%", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 12, padding: "12px 14px", color: "#f1f5f9", fontSize: 14, lineHeight: 1.6, resize: "none", outline: "none", fontFamily: "inherit", boxSizing: "border-box", marginBottom: 8 }}
+            />
+
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <span style={{ fontSize: 12, color: wordCount >= 6 ? "#10b981" : "#64748b" }}>
+                {wordCount} word{wordCount !== 1 ? "s" : ""} {wordCount < 6 ? "(min 6)" : "✓"}
+              </span>
+            </div>
+
+            {error && <div style={{ fontSize: 12, color: "#f43f5e", marginBottom: 12 }}>{error}</div>}
+
+            <button
+              onClick={handleSubmit}
+              disabled={!isReady || loading}
+              style={{ width: "100%", padding: "14px", background: isReady && !loading ? "linear-gradient(135deg, #6366f1, #8b5cf6)" : "rgba(255,255,255,0.06)", color: isReady && !loading ? "#fff" : "#64748b", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: isReady && !loading ? "pointer" : "default" }}
+            >
+              {loading ? "Scoring…" : "Get Feedback →"}
+            </button>
+          </>
+        ) : (
+          <>
+            <div style={{ textAlign: "center", padding: "20px 0", marginBottom: 16 }}>
+              <div style={{ fontSize: 64, fontWeight: 900, color: scoreColors[result.score] || "#f59e0b", letterSpacing: "-2px", lineHeight: 1 }}>{result.score}/5</div>
+              <div style={{ fontSize: 14, color: result.isNatural ? "#10b981" : "#f59e0b", marginTop: 8, fontWeight: 600 }}>
+                {result.isNatural ? "✓ Natural usage" : "⚠ Forced — practice more"}
+              </div>
+            </div>
+
+            <div style={{ background: "rgba(255,255,255,0.04)", borderRadius: 12, padding: "14px 16px", marginBottom: 12 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>Coach's Feedback</div>
+              <div style={{ fontSize: 14, color: "#cbd5e1", lineHeight: 1.7 }}>{result.feedback}</div>
+            </div>
+
+            {result.example && (
+              <div style={{ background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.15)", borderRadius: 12, padding: "14px 16px", marginBottom: 16 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#818cf8", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>Example</div>
+                <div style={{ fontSize: 14, color: "#a5b4fc", lineHeight: 1.6, fontStyle: "italic" }}>"{result.example}"</div>
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => { setResult(null); setUserSentence(""); }} style={{ flex: 1, padding: "12px", background: "rgba(99,102,241,0.1)", border: "1px solid rgba(99,102,241,0.2)", borderRadius: 12, color: "#a5b4fc", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+                Try Again
+              </button>
+              <button onClick={onClose} style={{ flex: 1, padding: "12px", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, color: "#94a3b8", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+                Done
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ExpressionCard({ item, onMarkMastered, onDelete, onPractice }) {
   const [expanded, setExpanded] = useState(false);
   const naturalness = item.enriched?.naturalness;
   const difficulty = getDifficultyFromNaturalness(naturalness?.rating);
@@ -462,6 +600,12 @@ function ExpressionCard({ item, onMarkMastered, onDelete }) {
 
           {/* Actions */}
           <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+            <button
+              onClick={(e) => { e.stopPropagation(); onPractice(item); }}
+              style={{ padding: "10px 14px", background: "linear-gradient(135deg, #6366f1, #8b5cf6)", border: "none", borderRadius: 10, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", flex: 1 }}
+            >
+              Practice →
+            </button>
             {item.status !== "mastered" && (
               <button
                 onClick={() => onMarkMastered(item.id)}
@@ -502,6 +646,7 @@ export default function LexiconScreen({ user, setCurrentScreen }) {
   const [showCapture, setShowCapture] = useState(false);
   const [bgEnrichProgress, setBgEnrichProgress] = useState(null);
   const bgEnrichRef = useRef(false);
+  const [practiceItem, setPracticeItem] = useState(null);
 
   useEffect(() => {
     fetchLexicon();
@@ -600,6 +745,14 @@ export default function LexiconScreen({ user, setCurrentScreen }) {
     } catch (err) {
       console.error("Delete lexicon item error:", err);
     }
+  }
+
+  async function handleContextualScore(item, score) {
+    const updates = computeNextReview(item, score);
+    const ref = doc(db, "users", user.uid, "lexicon", item.id);
+    await updateDoc(ref, updates);
+    setItems(prev => prev.map(it => it.id === item.id ? { ...it, ...updates } : it));
+    setPracticeItem(null);
   }
 
   async function addPhraseToLexicon(phraseText) {
@@ -749,7 +902,7 @@ export default function LexiconScreen({ user, setCurrentScreen }) {
             </div>
           ) : (
             filteredItems.map(item => (
-              <ExpressionCard key={item.id} item={item} onMarkMastered={handleMarkMastered} onDelete={handleDelete} />
+              <ExpressionCard key={item.id} item={item} onMarkMastered={handleMarkMastered} onDelete={handleDelete} onPractice={(it) => setPracticeItem(it)} />
             ))
           )}
 
@@ -821,6 +974,15 @@ export default function LexiconScreen({ user, setCurrentScreen }) {
             </div>
           ))}
         </div>
+      )}
+
+      {/* Contextual Practice Modal */}
+      {practiceItem && (
+        <ContextualPracticeModal
+          item={practiceItem}
+          onClose={() => setPracticeItem(null)}
+          onScored={(score) => handleContextualScore(practiceItem, score)}
+        />
       )}
 
       {/* Capture modal */}
