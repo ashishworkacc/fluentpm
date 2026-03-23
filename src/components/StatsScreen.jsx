@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, Component } from "react";
 import { collection, query, limit, getDocs, doc, getDoc } from "firebase/firestore";
 import { db } from "../lib/firebase.js";
 import { BADGES } from "../lib/achievementChecker.js";
@@ -14,6 +14,31 @@ const glassCard = {
   borderRadius: 18,
 };
 
+// ── Error Boundary ────────────────────────────────────────────────────────────
+class StatsErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(error) { return { error }; }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ padding: 32, color: "#f1f5f9", fontFamily: "sans-serif" }}>
+          <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 12, color: "#f43f5e" }}>Stats failed to load</div>
+          <div style={{ fontSize: 13, color: "#94a3b8", marginBottom: 16, lineHeight: 1.6 }}>
+            {this.state.error?.message || "Unknown error"}
+          </div>
+          <button
+            onClick={() => this.setState({ error: null })}
+            style={{ padding: "10px 20px", background: "#6366f1", color: "#fff", border: "none", borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: "pointer" }}
+          >
+            Retry
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /** Normalises a savedAt value (ISO string, Firestore Timestamp, or Date) to a sortable ISO string. */
@@ -28,9 +53,13 @@ function toSortDate(val) {
 
 function formatDate(dateStr) {
   if (!dateStr) return "";
-  const raw = toSortDate(dateStr);
-  const d = new Date(raw);
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  try {
+    const raw = toSortDate(dateStr);
+    if (!raw) return "";
+    const d = new Date(raw);
+    if (isNaN(d.getTime())) return "";
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  } catch { return ""; }
 }
 
 function getScoreColor(score) {
@@ -395,7 +424,7 @@ function DebriefCard({ debrief, onView, isSelected }) {
 
 // ── Main Component ─────────────────────────────────────────────────────────────
 
-export default function StatsScreen({ user, setCurrentScreen }) {
+function StatsScreenInner({ user, setCurrentScreen }) {
   const [activeTab, setActiveTab] = useState("overview");
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(true);
@@ -898,5 +927,13 @@ export default function StatsScreen({ user, setCurrentScreen }) {
 
       <div style={{ height: 24 }} />
     </div>
+  );
+}
+
+export default function StatsScreen(props) {
+  return (
+    <StatsErrorBoundary>
+      <StatsScreenInner {...props} />
+    </StatsErrorBoundary>
   );
 }

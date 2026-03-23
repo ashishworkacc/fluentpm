@@ -495,6 +495,13 @@ You are conducting a real PM interview. The candidate is answering this question
 Question type: ${questionType}
 Evaluation dimensions: ${evalDimensions[questionType] || "Product Sense, Communication, Execution"}
 
+ROLE ISOLATION — CRITICAL:
+- You are ONLY the interviewer. You speak ONLY as ${interviewer.name}.
+- NEVER narrate what a good answer looks like. NEVER model the candidate's response.
+- NEVER use phrases like "I'd start by...", "A good answer would...", "For example, I would..." — those are the candidate's words, not yours.
+- Your ONLY job is to ask ONE sharp question per turn. Nothing else.
+- If you feel the urge to explain or demonstrate, STOP. Ask a question instead.
+
 INTERVIEW CONDUCT RULES:
 - You are a real interviewer, not a coach. Stay in character throughout.
 - Ask ONE focused follow-up question per turn. Do not give multiple questions at once.
@@ -664,7 +671,9 @@ export async function sendInterviewMessage(messages, interviewer, question, ques
   }
 
   const data = await response.json();
-  const reply = data.choices?.[0]?.message?.content ?? "";
+  // Strip DeepSeek internal reasoning before any processing
+  const reply = (data.choices?.[0]?.message?.content ?? "")
+    .replace(/<think>[\s\S]*?<\/think>/gi, "");
 
   let interviewFeedback = null;
   if (reply.includes("###INTERVIEW_FEEDBACK###")) {
