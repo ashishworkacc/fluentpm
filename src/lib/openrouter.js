@@ -1132,3 +1132,147 @@ METRIC_GAPS: [Comma-separated list of points where a specific number/% would str
     return { optimizedAnswer: "", ownershipIssues: [], metricGaps: [] };
   }
 }
+
+// ── Podcast Simulation ─────────────────────────────────────────────────────
+
+/**
+ * Parse a raw podcast/conversation transcript into structured turns.
+ * @param {string} rawText - raw transcript text
+ * @returns {{ speakers: string[], turns: { speaker: string, text: string }[] }}
+ * @throws {Error} "SINGLE_SPEAKER" | "EMPTY_TURNS" | "network"
+ */
+export async function parsePodcastTranscript(rawText) {
+  const sliced = rawText.slice(0, 6000);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 25000);
+
+  try {
+    const res = await fetch(OPENROUTER_API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${getApiKey()}`,
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: MODEL,
+        temperature: 0.1,
+        max_tokens: 4000,
+        messages: [
+          {
+            role: "user",
+            content: `Parse this conversation transcript into structured JSON.
+
+Rules:
+- Identify all speakers (e.g. "Alex:", "[Alex]:", "ALEX:", timestamps before names).
+- Merge consecutive lines from the same speaker into one turn.
+- Output ONLY valid JSON, no markdown fences, no explanation.
+- Format: { "speakers": ["SpeakerA", "SpeakerB"], "turns": [{ "speaker": "SpeakerA", "text": "..." }, ...] }
+
+Transcript:
+${sliced}`,
+          },
+        ],
+      }),
+    });
+
+    clearTimeout(timeout);
+    if (!res.ok) throw new Error("network");
+
+    const data = await res.json();
+    let raw = (data.choices?.[0]?.message?.content ?? "")
+      .replace(/<think>[\s\S]*?<\/think>/gi, "")
+      .replace(/^```[\w]*\n?/m, "")
+      .replace(/```$/m, "")
+      .trim();
+
+    const parsed = JSON.parse(raw);
+    const speakers = parsed.speakers ?? [];
+    const turns = parsed.turns ?? [];
+
+    if (speakers.length < 2) throw new Error("SINGLE_SPEAKER");
+    if (turns.length < 2) throw new Error("EMPTY_TURNS");
+
+    return { speakers, turns };
+  } catch (err) {
+    clearTimeout(timeout);
+    if (err.message === "SINGLE_SPEAKER" || err.message === "EMPTY_TURNS") throw err;
+    throw new Error("network");
+  }
+}
+
+/**
+ * Score a single user podcast turn.
+ * @param {string} originalLine - the original script line the user was performing
+ * @param {string[]} targetPhrases - phrases tagged for practice
+ * @param {string} userTranscript - what the user actually said (from STT)
+ * @returns {{ meaningScore: number|null, phrasesUsed: string[], missedPhrases: string[], overallScore: number|null, feedback: string }}
+ */
+export async function scorePodcastTurn(originalLine, targetPhrases, userTranscript) {
+  const nullFallback = {
+    meaningScore: null,
+    phrasesUsed: [],
+    missedPhrases: targetPhrases,
+    overallScore: null,
+    feedback: "Scoring unavailable.",
+  };
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+
+    const res = await fetch(OPENROUTER_API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${getApiKey()}`,
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: MODEL,
+        temperature: 0.2,
+        max_tokens: 400,
+        messages: [
+          {
+            role: "user",
+            content: `Evaluate this spoken response and return ONLY valid JSON — no markdown, no explanation.
+
+Original line: "${originalLine}"
+Target phrases to use: ${JSON.stringify(targetPhrases)}
+User said: "${userTranscript}"
+
+Score on:
+1. meaningScore (1-5): How well the user preserved the meaning of the original line.
+2. phrasesUsed: Array of target phrases the user actually used (allow inflections/paraphrases).
+3. missedPhrases: Target phrases the user did NOT use.
+4. overallScore (1-10): 50% meaning preservation + 30% phrase usage rate + 20% fluency/naturalness.
+5. feedback: One sentence of constructive coaching.
+
+Return JSON: { "meaningScore": <1-5>, "phrasesUsed": [...], "missedPhrases": [...], "overallScore": <1-10>, "feedback": "..." }`,
+          },
+        ],
+      }),
+    });
+
+    clearTimeout(timeout);
+    if (!res.ok) return nullFallback;
+
+    const data = await res.json();
+    let raw = (data.choices?.[0]?.message?.content ?? "")
+      .replace(/<think>[\s\S]*?<\/think>/gi, "")
+      .replace(/^```[\w]*\n?/m, "")
+      .replace(/```$/m, "")
+      .trim();
+
+    const result = JSON.parse(raw);
+    return {
+      meaningScore: result.meaningScore ?? null,
+      phrasesUsed: result.phrasesUsed ?? [],
+      missedPhrases: result.missedPhrases ?? targetPhrases,
+      overallScore: result.overallScore ?? null,
+      feedback: result.feedback ?? "Scoring unavailable.",
+    };
+  } catch {
+    return nullFallback;
+  }
+}

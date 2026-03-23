@@ -415,6 +415,7 @@ const QUICK_FEATURES = [
   { id: "storyBank",       icon: "📖", label: "Story Bank",      desc: "Manage your STAR stories"  },
   { id: "league",          icon: "🏆", label: "League",          desc: "Your weekly ranking"       },
   { id: "customQuestions", icon: "📝", label: "My Questions",    desc: "Your question bank"        },
+  { id: "podcast",         icon: "🎙", label: "Podcast Sim",     desc: "Roleplay a real transcript" },
 ];
 
 // ── Main Component ────────────────────────────────────────────────────────────

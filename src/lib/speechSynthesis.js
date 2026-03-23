@@ -130,3 +130,61 @@ export function cancelSpeech() {
     window.speechSynthesis.cancel();
   }
 }
+
+// ── Podcast TTS ────────────────────────────────────────────────────────────
+
+function pickVoicePodcast() {
+  const all = window.speechSynthesis.getVoices();
+  const english = all.filter(v => v.lang.startsWith("en"));
+  if (english.length === 0) return null;
+
+  // Priority 1: Google Neural US voices
+  const google = english.filter(v => v.name.toLowerCase().includes("google"));
+  if (google.length > 0) return google[0];
+
+  // Priority 2: macOS Enhanced/Premium voices
+  const enhanced = english.filter(v =>
+    v.name.includes("Enhanced") || v.name.includes("Premium") || v.name.includes("Natural")
+  );
+  if (enhanced.length > 0) return enhanced[0];
+
+  // Fallback: first English voice
+  return english[0];
+}
+
+/**
+ * Speak a podcast co-host line with a neutral voice.
+ * @param {string} text - text to speak
+ * @param {function} onEnd - called when speech finishes or is cancelled
+ * @returns {{ stop: function }}
+ */
+export function speakPodcastLine(text, onEnd) {
+  if (typeof window === "undefined" || !window.speechSynthesis) {
+    onEnd?.();
+    return { stop: () => {} };
+  }
+
+  window.speechSynthesis.cancel();
+
+  const cleanText = text.replace(/[#*`]/g, "").replace(/\s+/g, " ").trim();
+  const utterance = new SpeechSynthesisUtterance(cleanText);
+  utterance.pitch = 1.0;
+  utterance.rate = 0.95;
+  utterance.volume = 1.0;
+
+  // Voices load async — try to pick one, fall back to browser default
+  const voice = pickVoicePodcast();
+  if (voice) utterance.voice = voice;
+
+  utterance.onend = () => onEnd?.();
+  utterance.onerror = () => onEnd?.();
+
+  window.speechSynthesis.speak(utterance);
+
+  return {
+    stop: () => {
+      window.speechSynthesis.cancel();
+      onEnd?.();
+    },
+  };
+}

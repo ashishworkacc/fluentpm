@@ -22,6 +22,7 @@ import CustomQuestionsScreen from "./components/CustomQuestionsScreen.jsx";
 import ProfileScreen from "./components/ProfileScreen.jsx";
 import LeagueScreen from "./components/LeagueScreen.jsx";
 import StatsScreen from "./components/StatsScreen.jsx";
+import PodcastScreen from "./components/PodcastScreen.jsx";
 
 // ── Window width hook ─────────────────────────────────────────────────────────
 
@@ -94,6 +95,7 @@ const SCREENS_WITH_NO_NAV = [
   "preBattle", "battle", "feedback", "lightning",
   "interview", "interviewFeedback", "interviewSelfAssess",
   "storyBank", "pushbackDrill", "quickDrill", "customQuestions",
+  "podcast",
 ];
 
 const SIDEBAR_WIDTH = 240;
@@ -434,6 +436,8 @@ export default function App() {
             setInterviewData={setInterviewData}
           />
         );
+      case "podcast":
+        return <PodcastScreen user={user} setCurrentScreen={setCurrentScreen} />;
       default:
         return (
           <HomeScreen
