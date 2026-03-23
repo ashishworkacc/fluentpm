@@ -9,6 +9,7 @@ import { enrichExpression, generateEliteVersion } from "../lib/openrouter.js";
 import { startRecognition } from "../lib/speechRecognition.js";
 import { serverTimestamp } from "firebase/firestore";
 import { checkNewBadges, BADGES } from "../lib/achievementChecker.js";
+import { logFailure, SEVERITY } from "../lib/failureTracker.js";
 
 // Keep localStorage cache in sync so HomeScreen loads instantly next time
 function updateProfileCache(uid, updates) {
@@ -472,6 +473,7 @@ export default function FeedbackScreen({ user, sessionData, opponent, setCurrent
 
       } catch (err) {
         console.error("Error saving session:", err);
+        logFailure(user, "FeedbackScreen", SEVERITY.CRITICAL, "Save battle session & XP", err);
       }
     }
 

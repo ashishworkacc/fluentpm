@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { collection, getDocs, addDoc, doc, updateDoc, query, orderBy, limit } from "firebase/firestore";
 import { db } from "../lib/firebase.js";
-import { scoreLightningRound } from "../lib/openrouter.js";
+import { scoreLightningRound, polishLightningResponse } from "../lib/openrouter.js";
+import { logFailure, SEVERITY } from "../lib/failureTracker.js";
 import { startRecognition } from "../lib/speechRecognition.js";
 import { analyseTranscript } from "../hooks/useRealTimeAnalysis.js";
 import { SCENARIOS } from "../data/scenarios.js";
@@ -112,8 +113,16 @@ export default function LightningRoundScreen({ user, setCurrentScreen }) {
   const roundResultsRef = useRef([]);
   const [currentRoundScore, setCurrentRoundScore] = useState(null);
   const [isScoring, setIsScoring] = useState(false);
+  const [scoringPhase, setScoringPhase] = useState(""); // "" | "polishing" | "scoring"
   const [questionType, setQuestionType] = useState("standard");
   // "standard" | "context" | "variant"
+
+  // Skip state — 1 skip allowed per round
+  const [skipsUsed, setSkipsUsed] = useState(0);
+  const [skippedScenarioIds, setSkippedScenarioIds] = useState([]);
+
+  // Polish result — shown alongside original in scoring phase
+  const [polishResult, setPolishResult] = useState(null); // { polished, changes }
 
   const recognitionRef = useRef(null);
   const liveTranscriptRef = useRef("");
@@ -271,19 +280,35 @@ export default function LightningRoundScreen({ user, setCurrentScreen }) {
 
   async function submitResponse(text) {
     setIsScoring(true);
+    setPolishResult(null);
     clearInterval(timerRef.current);
     setPhase("scoring");
 
     const variants = expressions[roundIndex]?.enriched?.variants || [];
     const variantText = variants[0] || currentExpression;
 
+    // Step 1: Polish the response
+    let textToScore = text;
     try {
+      setScoringPhase("polishing");
+      const polish = await polishLightningResponse(text, currentExpression, currentScenario?.text || "");
+      setPolishResult(polish);
+      if (polish.polished && polish.polished.trim()) {
+        textToScore = polish.polished;
+      }
+    } catch {
+      // Polish failed — score original
+    }
+
+    // Step 2: Score the (polished) response
+    try {
+      setScoringPhase("scoring");
       const result = await scoreLightningRound(
         currentExpression,
         "original",
         variantText,
         currentScenario?.text || "",
-        text
+        textToScore
       );
 
       const roundResult = {
@@ -316,6 +341,7 @@ export default function LightningRoundScreen({ user, setCurrentScreen }) {
       }
     } catch (err) {
       console.error("Lightning score error:", err);
+      logFailure(user, "LightningRound", SEVERITY.HIGH, "Score Lightning response", err, { roundIndex, expression: currentExpression });
       const fallback = {
         roundIndex,
         expression: currentExpression,
@@ -334,7 +360,33 @@ export default function LightningRoundScreen({ user, setCurrentScreen }) {
       });
     } finally {
       setIsScoring(false);
+      setScoringPhase("");
     }
+  }
+
+  function handleSkipScenario() {
+    if (skipsUsed >= 1) return;
+    clearInterval(timerRef.current);
+    // Pick a new scenario not in the session list and not already skipped
+    const usedIds = [...sessionScenarios.map(s => s.id), ...skippedScenarioIds];
+    const available = SCENARIOS.filter(s => !usedIds.includes(s.id));
+    const pool = available.length > 0 ? available : SCENARIOS.filter(s => s.id !== currentScenario?.id);
+    const newScenario = pool[Math.floor(Math.random() * pool.length)] || sessionScenarios[0];
+    setSkippedScenarioIds(prev => [...prev, currentScenario?.id]);
+    setCurrentScenario(newScenario);
+    setSkipsUsed(prev => prev + 1);
+    // Reset timer for the new scenario
+    setRespondTimer(RESPOND_SECONDS);
+    timerRef.current = setInterval(() => {
+      setRespondTimer(prev => {
+        if (prev <= 1) {
+          clearInterval(timerRef.current);
+          handleAutoSubmit();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
   }
 
   function handleNextRound() {
@@ -351,6 +403,9 @@ export default function LightningRoundScreen({ user, setCurrentScreen }) {
       setTopFiller(null);
       setTopFillerCount(0);
       setCurrentRoundScore(null);
+      setPolishResult(null);
+      setSkipsUsed(0);
+      setSkippedScenarioIds([]);
     }
   }
 
@@ -646,22 +701,38 @@ export default function LightningRoundScreen({ user, setCurrentScreen }) {
             </div>
           )}
 
-          {/* Submit button */}
-          <button
-            onClick={() => {
-              const text = confirmedTranscript || liveTranscriptRef.current || textInput;
-              if (text.trim()) submitResponse(text.trim());
-            }}
-            disabled={!confirmedTranscript && !liveTranscriptRef.current && !textInput.trim()}
-            style={{
-              ...styles.submitBtn,
-              opacity: !confirmedTranscript && !liveTranscriptRef.current && !textInput.trim() ? 0.4 : 1,
-              cursor: !confirmedTranscript && !liveTranscriptRef.current && !textInput.trim() ? "default" : "pointer",
-              marginTop: 16,
-            }}
-          >
-            Submit Response →
-          </button>
+          {/* Submit + Skip row */}
+          <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+            <button
+              onClick={() => {
+                const text = confirmedTranscript || liveTranscriptRef.current || textInput;
+                if (text.trim()) submitResponse(text.trim());
+              }}
+              disabled={!confirmedTranscript && !liveTranscriptRef.current && !textInput.trim()}
+              style={{
+                ...styles.submitBtn,
+                flex: 1,
+                opacity: !confirmedTranscript && !liveTranscriptRef.current && !textInput.trim() ? 0.4 : 1,
+                cursor: !confirmedTranscript && !liveTranscriptRef.current && !textInput.trim() ? "default" : "pointer",
+                marginTop: 0,
+              }}
+            >
+              Submit →
+            </button>
+            {skipsUsed < 1 && (
+              <button
+                onClick={handleSkipScenario}
+                style={{
+                  padding: "0 16px", height: 52, background: "rgba(255,255,255,0.05)",
+                  border: "1px solid rgba(255,255,255,0.1)", borderRadius: 14,
+                  color: "#94a3b8", fontSize: 12, fontWeight: 700, cursor: "pointer", flexShrink: 0,
+                }}
+                title="Skip this scenario (1 skip per round)"
+              >
+                Skip 🔀
+              </button>
+            )}
+          </div>
         </div>
       )}
 
@@ -671,7 +742,14 @@ export default function LightningRoundScreen({ user, setCurrentScreen }) {
           {isScoring ? (
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
               <Spinner />
-              <div style={{ fontSize: 14, color: "#64748b" }}>Scoring your response...</div>
+              <div style={{ fontSize: 14, color: "#64748b" }}>
+                {scoringPhase === "polishing" ? "Polishing your response..." : "Scoring your response..."}
+              </div>
+              {scoringPhase === "polishing" && (
+                <div style={{ fontSize: 12, color: "#475569", textAlign: "center", maxWidth: 240 }}>
+                  Fixing grammar & fillers before scoring
+                </div>
+              )}
             </div>
           ) : currentRoundScore ? (
             <div>
@@ -690,6 +768,30 @@ export default function LightningRoundScreen({ user, setCurrentScreen }) {
                   </div>
                 )}
               </div>
+
+              {/* AI Polish comparison — only show if something changed */}
+              {polishResult && polishResult.polished && polishResult.polished !== currentRoundScore.transcript && (
+                <div style={{ ...glassCard, padding: "14px 16px", marginBottom: 16, borderColor: "rgba(139,92,246,0.2)", background: "rgba(139,92,246,0.04)" }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#a78bfa", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: 10 }}>
+                    ✨ AI Polish
+                  </div>
+                  <div style={{ marginBottom: 8 }}>
+                    <div style={{ fontSize: 10, color: "#64748b", fontWeight: 600, marginBottom: 4 }}>YOUR ORIGINAL</div>
+                    <div style={{ fontSize: 13, color: "#94a3b8", fontStyle: "italic", lineHeight: 1.5 }}>"{currentRoundScore.transcript}"</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 10, color: "#a78bfa", fontWeight: 600, marginBottom: 4 }}>POLISHED VERSION</div>
+                    <div style={{ fontSize: 13, color: "#e2e8f0", lineHeight: 1.5 }}>"{polishResult.polished}"</div>
+                  </div>
+                  {polishResult.changes && polishResult.changes.length > 0 && (
+                    <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 4 }}>
+                      {polishResult.changes.map((c, i) => (
+                        <span key={i} style={{ fontSize: 10, color: "#94a3b8", background: "rgba(255,255,255,0.05)", borderRadius: 20, padding: "2px 8px" }}>{c}</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Feedback */}
               {currentRoundScore.feedback && (

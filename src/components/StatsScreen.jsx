@@ -15,9 +15,20 @@ const glassCard = {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+/** Normalises a savedAt value (ISO string, Firestore Timestamp, or Date) to a sortable ISO string. */
+function toSortDate(val) {
+  if (!val) return "";
+  if (typeof val === "string") return val;
+  if (val.seconds != null) return new Date(val.seconds * 1000).toISOString();
+  if (typeof val.toDate === "function") return val.toDate().toISOString();
+  if (val instanceof Date) return val.toISOString();
+  return String(val);
+}
+
 function formatDate(dateStr) {
   if (!dateStr) return "";
-  const d = new Date(dateStr);
+  const raw = toSortDate(dateStr);
+  const d = new Date(raw);
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
@@ -350,8 +361,8 @@ export default function StatsScreen({ user, setCurrentScreen }) {
         getDocs(collection(db, "users", user.uid, "lexicon")),
       ]);
 
-      const fetchedSessions = sSnap.docs.map(d => d.data()).sort((a, b) => (b.savedAt || "").localeCompare(a.savedAt || ""));
-      const fetchedInterviews = iSnap.docs.map(d => d.data()).sort((a, b) => (b.savedAt || "").localeCompare(a.savedAt || ""));
+      const fetchedSessions = sSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => toSortDate(b.savedAt).localeCompare(toSortDate(a.savedAt)));
+      const fetchedInterviews = iSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => toSortDate(b.savedAt).localeCompare(toSortDate(a.savedAt)));
       setSessions(fetchedSessions);
       setInterviews(fetchedInterviews);
 
@@ -359,7 +370,7 @@ export default function StatsScreen({ user, setCurrentScreen }) {
       const merged = [
         ...fetchedInterviews.map(d => ({ ...d, _type: "interview" })),
         ...fetchedSessions.map(d => ({ ...d, _type: "battle" })),
-      ].sort((a, b) => (b.timestamp || b.savedAt || "").localeCompare(a.timestamp || a.savedAt || "")).slice(0, 30);
+      ].sort((a, b) => toSortDate(b.timestamp || b.savedAt).localeCompare(toSortDate(a.timestamp || a.savedAt))).slice(0, 30);
       setSavedDebriefs(merged);
 
       // Badges

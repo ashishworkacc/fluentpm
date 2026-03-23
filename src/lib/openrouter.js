@@ -325,7 +325,10 @@ ${LANGUAGE_REGISTER_RULES}
 
 Return EXACTLY this JSON schema:
 {
-  "meaning": "plain English explanation of what this expression means",
+  "definition": "dictionary-style one-sentence definition in plain English",
+  "meaning": "plain English explanation of what this expression means in a PM context",
+  "hindi_meaning": "short Hindi translation or equivalent (romanized or Devanagari, 1-4 words)",
+  "synonyms": ["synonym1", "synonym2", "synonym3"],
   "whenToUse": "one sentence on the ideal situation to use this",
   "example": "one realistic example sentence using this expression in a PM context",
   "variants": ["variant1", "variant2", "variant3"],
@@ -333,12 +336,15 @@ Return EXACTLY this JSON schema:
   "naturalness": {
     "rating": 1,
     "label": "Natural | Slightly Formal | Bookish | Indian English | Corporate Jargon",
-    "alternative": "how a fluent PM would say this — empty string if rating >= 3"
+    "alternative": "how a fluent PM would say this — empty string if rating <= 2"
   }
 }
 
 Rules:
-- naturalness.rating: 1=Natural, 2=Slightly Formal, 3=Bookish, 4=Indian English, 5=Corporate Jargon
+- naturalness.rating: 1=Natural (easy/common), 2=Slightly Formal, 3=Bookish, 4=Indian English, 5=Corporate Jargon (hard/rare)
+- Higher rating = harder expression that needs a warning
+- synonyms: 2-4 natural English synonyms or near-equivalents
+- hindi_meaning: use common Hindi words a non-native PM would recognise
 - variants must be natural alternatives that pass the language register rules above
 - Return valid JSON only`;
 }
@@ -361,7 +367,7 @@ export async function enrichExpression(expression) {
         model: FAST_MODEL,
         messages: [{ role: "user", content: prompt }],
         temperature: 0.3,
-        max_tokens: 600,
+        max_tokens: 900,
       }),
       signal: controller.signal,
     });
@@ -778,6 +784,71 @@ export async function scoreLightningRound(
   } catch {
     console.error("Failed to parse lightning response:", raw);
     return null;
+  }
+}
+
+// ── Polish Lightning Response ─────────────────────────────────────────────────
+
+/**
+ * Lightly polish a spoken Lightning Round response — fix grammar, filler word removal,
+ * and natural phrasing — without changing the meaning or adding new ideas.
+ * Returns { polished: string, changes: string[] }
+ */
+export async function polishLightningResponse(userText, expression, scenario) {
+  if (!userText || userText.trim().length < 10) return { polished: userText, changes: [] };
+
+  const prompt = `You are a professional communication editor helping a Product Manager polish their spoken response.
+
+SCENARIO: "${scenario}"
+TARGET EXPRESSION (they may or may not have used it): "${expression}"
+ORIGINAL RESPONSE: "${userText}"
+
+Your task: lightly polish the response to improve natural fluency. Rules:
+1. Fix clear grammar errors and filler words (um, uh, like, you know, basically)
+2. Improve sentence flow without changing the meaning
+3. Do NOT add new ideas, facts, or arguments — only rephrase existing ones
+4. Keep the same structure and approximate length
+5. If the expression was used awkwardly, fix only the phrasing around it
+
+Return ONLY valid JSON:
+{
+  "polished": "the improved version of their response",
+  "changes": ["short description of change 1", "short description of change 2"]
+}
+
+If the response is already clean, return it unchanged with an empty changes array.`;
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12000);
+    const response = await fetch(OPENROUTER_API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${getApiKey()}`,
+        "HTTP-Referer": window.location.origin,
+        "X-Title": "FluentPM",
+      },
+      body: JSON.stringify({
+        model: FAST_MODEL,
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.2,
+        max_tokens: 500,
+      }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    if (!response.ok) return { polished: userText, changes: [] };
+    const data = await response.json();
+    const raw = data.choices?.[0]?.message?.content ?? "{}";
+    const cleaned = raw.replace(/```(?:json)?\n?/g, "").replace(/```/g, "").trim();
+    const parsed = JSON.parse(cleaned);
+    return {
+      polished: parsed.polished || userText,
+      changes: parsed.changes || [],
+    };
+  } catch {
+    return { polished: userText, changes: [] };
   }
 }
 

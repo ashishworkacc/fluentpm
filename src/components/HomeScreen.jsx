@@ -336,7 +336,7 @@ function DailyChallengeDoneCard({ onRematch }) {
   );
 }
 
-function DailyChallengeCard({ opponent, scenario, onEnterArena, onShuffle }) {
+function DailyChallengeCard({ opponent, scenario, onEnterArena, onShuffle, todayDone }) {
   const diffColor = DIFFICULTY_COLORS[scenario.difficulty] || "#94a3b8";
   const xpRange = scenario.difficulty === "easy"
     ? "15–25 XP"
@@ -355,9 +355,16 @@ function DailyChallengeCard({ opponent, scenario, onEnterArena, onShuffle }) {
       {/* Label row */}
       <div style={styles.challengeHeader}>
         <span style={styles.challengeLabel}>TODAY'S CHALLENGE</span>
-        <span style={{ ...styles.diffBadge, background: `${diffColor}22`, color: diffColor }}>
-          {scenario.difficulty.charAt(0).toUpperCase() + scenario.difficulty.slice(1)}
-        </span>
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          {todayDone && (
+            <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20, background: "rgba(16,185,129,0.12)", color: "#10b981" }}>
+              ✓ Done today
+            </span>
+          )}
+          <span style={{ ...styles.diffBadge, background: `${diffColor}22`, color: diffColor }}>
+            {scenario.difficulty.charAt(0).toUpperCase() + scenario.difficulty.slice(1)}
+          </span>
+        </div>
       </div>
 
       {/* Opponent */}
@@ -798,17 +805,14 @@ export default function HomeScreen({ user, setCurrentScreen, setPreBattleData, s
         </div>
       </div>
 
-      {/* Daily Challenge — full width on both layouts */}
-      {todayDone ? (
-        <DailyChallengeDoneCard onRematch={handleEnterArena} />
-      ) : (
-        <DailyChallengeCard
-          opponent={dailyOpponent}
-          scenario={dailyScenario}
-          onEnterArena={handleEnterArena}
-          onShuffle={() => setDailyChallenge(shuffleDailyChallenge(user.uid))}
-        />
-      )}
+      {/* Daily Challenge — full width on both layouts (no daily cap — unlimited practice) */}
+      <DailyChallengeCard
+        opponent={dailyOpponent}
+        scenario={dailyScenario}
+        onEnterArena={handleEnterArena}
+        onShuffle={() => setDailyChallenge(shuffleDailyChallenge(user.uid))}
+        todayDone={todayDone}
+      />
 
       {/* Lightning Round — mobile only (desktop shows in right col above) */}
       {!isDesktop && (

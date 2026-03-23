@@ -11,6 +11,7 @@ import {
 } from "firebase/firestore";
 import { db } from "../lib/firebase.js";
 import { enrichExpression } from "../lib/openrouter.js";
+import { logFailure, SEVERITY } from "../lib/failureTracker.js";
 import { PHRASE_CATEGORIES } from "../data/phrases.js";
 import { isDueForReview, getMasteryPercent, getNextReviewLabel, computeNextReview } from "../lib/expressionScheduler.js";
 
@@ -40,9 +41,10 @@ const SOURCE_TAGS = ["Article", "Podcast", "Book", "Conversation"];
 const TAB_LABELS = ["All Saved", "Due for Practice", "Mastered"];
 
 function getDifficultyFromNaturalness(rating) {
+  // naturalness.rating: 1=Natural (easy) → 5=Corporate Jargon (hard)
   if (!rating) return "medium";
-  if (rating <= 2) return "hard";
-  if (rating <= 3) return "medium";
+  if (rating >= 4) return "hard";
+  if (rating >= 3) return "medium";
   return "easy";
 }
 
@@ -521,6 +523,20 @@ function ExpressionCard({ item, onMarkMastered, onDelete, onPractice }) {
       {/* Expanded details */}
       {expanded && (
         <div onClick={e => e.stopPropagation()}>
+          {item.enriched?.definition && (
+            <div style={styles.detailRow}>
+              <div style={styles.detailLabel}>Definition</div>
+              <div style={styles.detailText}>{item.enriched.definition}</div>
+            </div>
+          )}
+
+          {item.enriched?.hindi_meaning && (
+            <div style={styles.detailRow}>
+              <div style={styles.detailLabel}>Hindi</div>
+              <div style={{ ...styles.detailText, color: "#f59e0b", fontWeight: 600 }}>{item.enriched.hindi_meaning}</div>
+            </div>
+          )}
+
           {item.enriched?.whenToUse && (
             <div style={styles.detailRow}>
               <div style={styles.detailLabel}>When to use</div>
@@ -532,6 +548,23 @@ function ExpressionCard({ item, onMarkMastered, onDelete, onPractice }) {
             <div style={styles.detailRow}>
               <div style={styles.detailLabel}>Meaning</div>
               <div style={styles.detailText}>{item.enriched.meaning}</div>
+            </div>
+          )}
+
+          {item.enriched?.synonyms && item.enriched.synonyms.length > 0 && (
+            <div style={{ marginTop: 12, marginBottom: 12 }}>
+              <div style={styles.detailLabel}>Synonyms</div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+                {item.enriched.synonyms.slice(0, 4).map((s, i) => (
+                  <span key={i} style={{
+                    fontSize: 12, color: "#a5f3fc", background: "rgba(6,182,212,0.08)",
+                    border: "1px solid rgba(6,182,212,0.2)", borderRadius: 20,
+                    padding: "3px 10px",
+                  }}>
+                    {s}
+                  </span>
+                ))}
+              </div>
             </div>
           )}
 
@@ -655,7 +688,7 @@ export default function LexiconScreen({ user, setCurrentScreen }) {
   async function fetchLexicon() {
     try {
       const ref = collection(db, "users", user.uid, "lexicon");
-      const q = query(ref, limit(200));
+      const q = query(ref, limit(500));
       const snap = await getDocs(q);
       const data = snap.docs
         .map(d => ({ id: d.id, ...d.data() }))
@@ -733,7 +766,9 @@ export default function LexiconScreen({ user, setCurrentScreen }) {
             it.id === id ? { ...it, enriched, status: "new" } : it
           ));
         }
-      } catch {}
+      } catch (enrichErr) {
+        logFailure(user, "Lexicon", SEVERITY.MEDIUM, "Background enrichment", enrichErr, { expression: expr });
+      }
       setBgEnrichProgress({ current: i + 1, total: docIds.length });
     }
 
