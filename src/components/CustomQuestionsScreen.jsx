@@ -159,40 +159,51 @@ export default function CustomQuestionsScreen({ user, setCurrentScreen, setCusto
     setImportMsg("");
     setImportProgress({ current: 0, total: lines.length });
 
-    const BATCH_SIZE = 10;
+    const ref = collection(db, "users", user.uid, "customQuestions");
+    const addedAt = new Date().toISOString();
     let imported = 0;
-    try {
-      const ref = collection(db, "users", user.uid, "customQuestions");
-      for (let i = 0; i < lines.length; i += BATCH_SIZE) {
-        const batch = lines.slice(i, i + BATCH_SIZE);
-        await Promise.all(batch.map(text =>
-          addDoc(ref, {
-            text,
-            source: "custom",
-            addedAt: new Date().toISOString(),
-            attempts: 0,
-            bestScore: null,
-            lastAttempted: null,
-          })
-        ));
-        imported += batch.length;
-        setImportProgress({ current: imported, total: lines.length });
-        if (i + BATCH_SIZE < lines.length) {
-          await new Promise(r => setTimeout(r, 200));
-        }
+    let firstError = null;
+
+    // Write every question independently — one failure never blocks the rest
+    for (let i = 0; i < lines.length; i++) {
+      try {
+        await addDoc(ref, {
+          text: lines[i],
+          source: "custom",
+          addedAt,
+          attempts: 0,
+          bestScore: null,
+          lastAttempted: null,
+        });
+        imported++;
+      } catch (err) {
+        if (!firstError) firstError = err;
+        console.error(`Failed to save question ${i + 1}:`, err.code, err.message);
       }
-      setBulkText("");
-      setImportMsg(`✓ Imported ${imported} question${imported !== 1 ? "s" : ""}`);
-      setTimeout(() => setImportMsg(""), 4000);
-      bustQCache(user.uid);
-      await fetchQuestions();
-    } catch (err) {
-      console.error("Import error:", err);
-      setImportMsg("Import failed — check your connection and try again");
-    } finally {
-      setImporting(false);
-      setImportProgress(null);
+      setImportProgress({ current: i + 1, total: lines.length });
     }
+
+    setImporting(false);
+    setImportProgress(null);
+
+    if (imported === 0) {
+      // Nothing saved — show the actual Firebase error code so it's diagnosable
+      const code = firstError?.code || "unknown";
+      setImportMsg(`Import failed (${code}) — check your connection and try again`);
+      return;
+    }
+
+    // Partial or full success
+    setBulkText("");
+    const skipped = lines.length - imported;
+    setImportMsg(
+      skipped > 0
+        ? `✓ Imported ${imported} questions (${skipped} skipped)`
+        : `✓ Imported ${imported} question${imported !== 1 ? "s" : ""}`
+    );
+    setTimeout(() => setImportMsg(""), 5000);
+    bustQCache(user.uid);
+    await fetchQuestions();
   }
 
   async function handleDelete(questionId) {

@@ -3,14 +3,19 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Each user can only read and write their own data tree
-    match /users/{userId}/{document=**} {
+    // Top-level user document
+    match /users/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
-    // Block everything else
-    match /{document=**} {
-      allow read, write: if false;
+    // All subcollections under a user's document (sessions, lexicon, customQuestions, etc.)
+    match /users/{userId}/{collection}/{docId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Nested subcollections one level deeper (badges, etc.)
+    match /users/{userId}/{collection}/{docId}/{subCollection}/{subDocId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
     }
   }
 }
