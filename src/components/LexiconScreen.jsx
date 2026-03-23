@@ -686,25 +686,34 @@ export default function LexiconScreen({ user, setCurrentScreen }) {
   }
 
   async function onBulkSave(expressions, source) {
-    // Step 1: Save all to Firestore instantly with status: pending_enrichment
-    const docIds = [];
-    for (const expr of expressions) {
-      try {
-        const ref = await addDoc(collection(db, "users", user.uid, "lexicon"), {
+    // Step 1: Write all docs to Firestore in parallel — Firestore handles concurrent writes fine.
+    // Sequential writes (for...of await) caused ~200ms × N blocking; parallel is instant.
+    const savedAt = new Date().toISOString();
+    const refs = await Promise.all(
+      expressions.map(expr =>
+        addDoc(collection(db, "users", user.uid, "lexicon"), {
           expression: expr,
           enriched: null,
           source: source || null,
           status: "pending_enrichment",
           usedInBattles: 0,
-          savedAt: new Date().toISOString(),
+          savedAt,
           lastUsedDate: null,
-        });
-        docIds.push({ expr, id: ref.id });
-      } catch {}
-    }
-    await fetchLexicon(); // show pending items immediately
+        })
+      )
+    );
+    const docIds = expressions.map((expr, i) => ({ expr, id: refs[i].id }));
 
-    // Step 2: Enrich in background batches of 5 (non-blocking)
+    // Show pending items immediately in UI (optimistic — no Firestore re-read needed)
+    setItems(prev => [
+      ...docIds.map(({ expr, id }) => ({
+        id, expression: expr, enriched: null, source: source || null,
+        status: "pending_enrichment", usedInBattles: 0, savedAt, lastUsedDate: null,
+      })),
+      ...prev,
+    ]);
+
+    // Step 2: Enrich sequentially in background (1 at a time avoids LLM rate limits)
     runBackgroundEnrichment(docIds);
   }
 
@@ -712,24 +721,26 @@ export default function LexiconScreen({ user, setCurrentScreen }) {
     if (bgEnrichRef.current) return; // prevent duplicate runs
     bgEnrichRef.current = true;
     setBgEnrichProgress({ current: 0, total: docIds.length });
-    let done = 0;
-    for (let i = 0; i < docIds.length; i += 5) {
-      const batch = docIds.slice(i, i + 5);
-      await Promise.all(batch.map(async ({ expr, id }) => {
-        try {
-          const enriched = await enrichExpression(expr);
-          if (enriched) {
-            const ref = doc(db, "users", user.uid, "lexicon", id);
-            await updateDoc(ref, { enriched, status: "new" });
-          }
-          done++;
-          setBgEnrichProgress(p => p ? { ...p, current: done } : null);
-        } catch {}
-      }));
-      await fetchLexicon(); // refresh after each batch
+
+    for (let i = 0; i < docIds.length; i++) {
+      const { expr, id } = docIds[i];
+      try {
+        const enriched = await enrichExpression(expr);
+        if (enriched) {
+          await updateDoc(doc(db, "users", user.uid, "lexicon", id), { enriched, status: "new" });
+          // Update local state directly — no fetchLexicon() round-trip needed
+          setItems(prev => prev.map(it =>
+            it.id === id ? { ...it, enriched, status: "new" } : it
+          ));
+        }
+      } catch {}
+      setBgEnrichProgress({ current: i + 1, total: docIds.length });
     }
+
     setBgEnrichProgress(null);
     bgEnrichRef.current = false;
+    // Single refresh at the very end to sync anything missed
+    fetchLexicon();
   }
 
   async function handleMarkMastered(itemId) {

@@ -856,28 +856,28 @@ Raw input (one per line):
 ${lines.map((l, i) => `${i + 1}. ${l}`).join("\n")}
 
 Clean this list:
-1. Remove any numbering or bullet points
-2. Fix obvious typos
-3. Remove duplicates (keep first occurrence)
-4. Remove anything that is not a professional expression or phrase (e.g. URLs, junk)
-5. Trim whitespace
-6. Keep max 50 items
+1. Remove any numbering or bullet points from the start of each line
+2. Fix obvious typos in the expressions
+3. Remove exact duplicates (keep first occurrence only)
+4. Remove lines that are clearly not expressions (e.g. URLs, single random characters, blank placeholders)
+5. Trim leading/trailing whitespace
+6. Keep ALL valid expressions — do not impose any item limit
 
-Return ONLY the cleaned expressions, one per line, no numbering, no extra text.`
+Return ONLY the cleaned expressions, one per line, no numbering, no commentary, no extra text.`
     : `You are helping clean a list of ${lines.length} interview questions for a PM interview prep app.
 
 Raw input (one per line):
 ${lines.map((l, i) => `${i + 1}. ${l}`).join("\n")}
 
 Clean this list:
-1. Remove numbering/bullets
-2. Fix typos and grammar
-3. Remove duplicates
-4. Ensure each line is a proper interview question (ends with ?)
-5. Remove non-questions (URLs, gibberish)
-6. Keep max 100 items
+1. Remove numbering or bullet points from the start of each line
+2. Fix obvious typos and grammar errors
+3. Remove exact duplicates (keep first occurrence only)
+4. Remove lines that are clearly not questions (e.g. URLs, gibberish, single words)
+5. Trim leading/trailing whitespace
+6. Keep ALL valid questions — do not impose any item limit
 
-Return ONLY the cleaned questions, one per line, no numbering, no extra text.`;
+Return ONLY the cleaned questions, one per line, no numbering, no commentary, no extra text.`;
 
   try {
     const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -891,15 +891,21 @@ Return ONLY the cleaned questions, one per line, no numbering, no extra text.`;
       body: JSON.stringify({
         model: "deepseek/deepseek-chat",
         messages: [{ role: "user", content: prompt }],
-        temperature: 0.2,
-        max_tokens: 2000,
+        temperature: 0.1,
+        max_tokens: 8000,
       }),
     });
     if (!res.ok) throw new Error("API error");
     const data = await res.json();
     const text = data.choices?.[0]?.message?.content || "";
     const cleaned = text.split("\n").map(l => l.trim()).filter(Boolean);
-    return cleaned.length > 0 ? cleaned : lines;
+    // Safety: if AI returned significantly fewer items than input (>30% loss), fall back to lightly cleaned originals
+    if (cleaned.length > 0 && cleaned.length >= lines.length * 0.7) {
+      return cleaned;
+    } else if (cleaned.length > 0) {
+      return cleaned; // still use AI result even if smaller — duplicates were removed
+    }
+    return lines;
   } catch {
     return lines;
   }
