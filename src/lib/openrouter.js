@@ -742,6 +742,86 @@ Return ONLY the rewritten response. No explanation. No quotes around it.`;
   }
 }
 
+// ── Interview Readiness Assessment ───────────────────────────────────────────
+
+/**
+ * AI-driven interview readiness score.
+ * Sends a compact session summary (~200 tokens) and gets back:
+ * { score: 0-100, label, summary, gaps[], strengths[], nextAction }
+ * Returns null on failure — caller should use formula fallback.
+ */
+export async function assessInterviewReadiness(sessions, interviews) {
+  const recentSessions = sessions.slice(0, 15);
+  const avgScore = recentSessions.length
+    ? (recentSessions.reduce((s, x) => s + (x.aiScore || x.score || 0), 0) / recentSessions.length).toFixed(1)
+    : 0;
+  const allWeak = sessions.flatMap(s => s.weakPhrases || []);
+  const weakCounts = {};
+  allWeak.forEach(p => { weakCounts[p] = (weakCounts[p] || 0) + 1; });
+  const topWeak = Object.entries(weakCounts).sort(([, a], [, b]) => b - a).slice(0, 5).map(([p]) => p).join(", ") || "none";
+  const allTips = sessions.slice(0, 8).map(s => s.coachTip || s.tip).filter(Boolean).join("; ").slice(0, 300);
+  const interviewVerdicts = interviews.slice(0, 5).map(i => i.verdict || "").filter(Boolean).join(", ") || "none";
+  const situationTypes = [...new Set(sessions.slice(0, 15).map(s => s.situationType).filter(Boolean))].join(", ") || "mixed";
+  const scoreSpread = recentSessions.map(s => s.aiScore || s.score || 0).filter(Boolean).join(",") || "none";
+
+  const prompt = `You are a strict PM interview coach assessing a candidate's readiness.
+
+Practice data:
+- Arena sessions: ${sessions.length}, Interviews: ${interviews.length}
+- Avg score (last ${recentSessions.length}): ${avgScore}/10
+- Score spread: ${scoreSpread}
+- Recurring weak phrases: ${topWeak}
+- Recent coach tips: ${allTips || "none"}
+- Interview verdicts: ${interviewVerdicts}
+- Scenario types covered: ${situationTypes}
+
+Rules for scoring:
+- 0-15: No data / just started
+- 16-35: Early stage — needs more volume regardless of score
+- 36-55: Building — consistent practice but gaps remain
+- 56-74: Getting there — strong scores but needs polish under pressure
+- 75-89: Almost ready — solid but one or two clear gaps to fix
+- 90-100: Interview ready — consistently excellent across formats
+
+IMPORTANT: Score < 50 if fewer than 5 sessions. Score 70+ ONLY if avg >= 7.0 AND 8+ sessions.
+
+Return ONLY valid JSON, no markdown:
+{"score":0,"label":"Early Stage","summary":"one honest sentence","gaps":["gap1","gap2"],"strengths":["strength1"],"nextAction":"one specific action"}`;
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+    const res = await fetch(OPENROUTER_API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${getApiKey()}`,
+        "HTTP-Referer": window.location.origin,
+        "X-Title": "FluentPM",
+      },
+      body: JSON.stringify({
+        model: FAST_MODEL,
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.2,
+        max_tokens: 350,
+      }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const raw = (data.choices?.[0]?.message?.content ?? "{}").replace(/```(?:json)?\n?/g, "").replace(/```/g, "").trim();
+    const parsed = JSON.parse(raw);
+    if (typeof parsed.score !== "number") return null;
+    parsed.score = Math.min(100, Math.max(0, Math.round(parsed.score)));
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+// ── Lightning Round ──────────────────────────────────────────────────────────
+
 export async function scoreLightningRound(
   targetExpression,
   variantToUse,

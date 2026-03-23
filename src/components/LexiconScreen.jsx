@@ -465,19 +465,32 @@ function ExpressionCard({ item, onMarkMastered, onDelete, onPractice }) {
             {item.expression}
           </div>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            <span style={{
-              fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20,
-              background: diffStyle.bg, color: diffStyle.color,
-            }}>
-              {difficulty}
-            </span>
-            <span style={{
-              fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20,
-              background: statusStyle.bg, color: statusStyle.color,
-              textTransform: "capitalize",
-            }}>
-              {item.status || "new"}
-            </span>
+            {item.status === "pending_enrichment" ? (
+              <span style={{
+                fontSize: 10, fontWeight: 700, padding: "2px 10px", borderRadius: 20,
+                background: "rgba(245,158,11,0.12)", color: "#f59e0b",
+                display: "inline-flex", alignItems: "center", gap: 4,
+              }}>
+                <span style={{ display: "inline-block", animation: "spin 1.2s linear infinite" }}>⏳</span>
+                Enriching…
+              </span>
+            ) : (
+              <>
+                <span style={{
+                  fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20,
+                  background: diffStyle.bg, color: diffStyle.color,
+                }}>
+                  {difficulty}
+                </span>
+                <span style={{
+                  fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20,
+                  background: statusStyle.bg, color: statusStyle.color,
+                  textTransform: "capitalize",
+                }}>
+                  {item.status || "new"}
+                </span>
+              </>
+            )}
             {item.source && (
               <span style={{
                 fontSize: 10, fontWeight: 600, padding: "2px 8px", borderRadius: 20,

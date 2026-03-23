@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { collection, query, limit, getDocs, doc, getDoc } from "firebase/firestore";
 import { db } from "../lib/firebase.js";
 import { BADGES } from "../lib/achievementChecker.js";
+import { assessInterviewReadiness, generateEliteVersion } from "../lib/openrouter.js";
 // RANKS imported for future rank-display helpers if needed
 // import { RANKS } from "../hooks/useProgress.js";
 
@@ -207,6 +208,8 @@ function RankRoadmap({ currentRank, currentXP }) {
 }
 
 function DebriefCard({ debrief, onView, isSelected }) {
+  const [eliteAnswer, setEliteAnswer] = useState(null);
+  const [eliteLoading, setEliteLoading] = useState(false);
   const isInterview = debrief._type === "interview";
   const badgeColor = isInterview ? "#8b5cf6" : "#6366f1";
   const badgeBg = isInterview ? "rgba(139,92,246,0.15)" : "rgba(99,102,241,0.15)";
@@ -255,6 +258,19 @@ function DebriefCard({ debrief, onView, isSelected }) {
 
       {isSelected && (
         <div style={{ marginTop: 16, borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: 16 }}>
+
+          {/* Universal: Scenario / Question */}
+          {(debrief.scenarioText || debrief.questionText) && (
+            <div style={{ marginBottom: 14, padding: "12px 14px", background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.15)", borderRadius: 12 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#818cf8", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>
+                {isInterview ? "Question" : "Scenario"}
+              </div>
+              <div style={{ fontSize: 13, color: "#cbd5e1", lineHeight: 1.6, fontStyle: "italic" }}>
+                "{debrief.scenarioText || debrief.questionText}"
+              </div>
+            </div>
+          )}
+
           {isInterview ? (
             <>
               {debrief.verdictReason && (
@@ -292,25 +308,34 @@ function DebriefCard({ debrief, onView, isSelected }) {
             </>
           ) : (
             <>
-              {debrief.tip && (
-                <div style={{ marginBottom: 12 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Coach's Call</div>
-                  <div style={{ fontSize: 13, color: "#94a3b8", lineHeight: 1.6 }}>{debrief.tip || debrief.coachTip}</div>
-                </div>
-              )}
-              {debrief.weakPhrases && debrief.weakPhrases.length > 0 && (
-                <div style={{ marginBottom: 12 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: "#f43f5e", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Phrases to Retire</div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                    {debrief.weakPhrases.map((p, i) => (
-                      <span key={i} style={{ fontSize: 12, color: "#f43f5e", textDecoration: "line-through", background: "rgba(244,63,94,0.06)", padding: "2px 8px", borderRadius: 6 }}>{p}</span>
-                    ))}
+              {/* What Went Wrong — combines weak phrases + coach tip */}
+              {(debrief.weakPhrases?.length > 0 || debrief.tip || debrief.coachTip) && (
+                <div style={{ marginBottom: 12, padding: "12px 14px", background: "rgba(244,63,94,0.05)", border: "1px solid rgba(244,63,94,0.14)", borderRadius: 12 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#f43f5e", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>
+                    What Went Wrong
                   </div>
+                  {debrief.weakPhrases?.length > 0 && (
+                    <div style={{ marginBottom: 8 }}>
+                      <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 4, fontWeight: 600 }}>Phrases to retire:</div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                        {debrief.weakPhrases.map((p, i) => (
+                          <span key={i} style={{ fontSize: 12, color: "#f43f5e", textDecoration: "line-through", background: "rgba(244,63,94,0.08)", padding: "2px 8px", borderRadius: 6 }}>{p}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {(debrief.tip || debrief.coachTip) && (
+                    <div style={{ fontSize: 13, color: "#94a3b8", lineHeight: 1.6 }}>
+                      {debrief.tip || debrief.coachTip}
+                    </div>
+                  )}
                 </div>
               )}
+
+              {/* Power Phrases — what worked */}
               {debrief.powerPhrases && debrief.powerPhrases.length > 0 && (
                 <div style={{ marginBottom: 12 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: "#06b6d4", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Power Phrases</div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#06b6d4", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>What Worked</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                     {debrief.powerPhrases.map((p, i) => (
                       <div key={i} style={{ fontSize: 12, color: "#a5f3fc", fontStyle: "italic" }}>"{p}"</div>
@@ -318,6 +343,47 @@ function DebriefCard({ debrief, onView, isSelected }) {
                   </div>
                 </div>
               )}
+
+              {/* Ideal Answer — lazy loaded */}
+              <div style={{ marginTop: 4 }}>
+                {eliteAnswer ? (
+                  <div style={{ padding: "12px 14px", background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.2)", borderRadius: 12 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "#818cf8", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>
+                      Ideal Answer
+                    </div>
+                    <div style={{ fontSize: 13, color: "#cbd5e1", lineHeight: 1.7 }}>{eliteAnswer}</div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      if (eliteLoading) return;
+                      setEliteLoading(true);
+                      const result = await generateEliteVersion(
+                        debrief.transcript || "",
+                        debrief.scenarioText || "",
+                        debrief.opponentName || "PM"
+                      );
+                      setEliteAnswer(result || "Could not generate an ideal answer — check your connection.");
+                      setEliteLoading(false);
+                    }}
+                    disabled={eliteLoading}
+                    style={{
+                      width: "100%", padding: "10px 14px",
+                      background: "rgba(99,102,241,0.06)",
+                      border: "1px dashed rgba(99,102,241,0.3)",
+                      borderRadius: 10, color: "#a5b4fc",
+                      fontSize: 13, fontWeight: 600,
+                      cursor: eliteLoading ? "default" : "pointer",
+                      display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                    }}
+                  >
+                    {eliteLoading ? (
+                      <><span style={{ animation: "spin 1s linear infinite", display: "inline-block" }}>⏳</span> Generating...</>
+                    ) : "✨ Show Ideal Answer"}
+                  </button>
+                )}
+              </div>
             </>
           )}
         </div>
@@ -342,8 +408,32 @@ export default function StatsScreen({ user, setCurrentScreen }) {
   const [earnedBadges, setEarnedBadges] = useState([]);
   const [savedDebriefs, setSavedDebriefs] = useState([]);
   const [selectedDebrief, setSelectedDebrief] = useState(null);
+  const [aiReadiness, setAiReadiness] = useState(null);
+  const [readinessLoading, setReadinessLoading] = useState(false);
 
   useEffect(() => { fetchAll(); }, [user.uid]);
+
+  // Fire AI readiness assessment after data loads, with 30-min sessionStorage cache
+  useEffect(() => {
+    if (sessions.length === 0 && interviews.length === 0) return;
+    const CACHE_KEY = `fluentpm_readiness_${user.uid}`;
+    const CACHE_TTL = 30 * 60 * 1000;
+    try {
+      const cached = JSON.parse(sessionStorage.getItem(CACHE_KEY) || "null");
+      if (cached && Date.now() - cached.ts < CACHE_TTL) {
+        setAiReadiness(cached.data);
+        return;
+      }
+    } catch {}
+    setReadinessLoading(true);
+    assessInterviewReadiness(sessions, interviews).then(result => {
+      if (result) {
+        setAiReadiness(result);
+        try { sessionStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data: result })); } catch {}
+      }
+      setReadinessLoading(false);
+    }).catch(() => setReadinessLoading(false));
+  }, [sessions.length, interviews.length]);
 
   async function fetchAll() {
     const safety = setTimeout(() => { setLoading(false); setSyncing(false); }, 8000);
@@ -403,9 +493,17 @@ export default function StatsScreen({ user, setCurrentScreen }) {
   const allScores = sessions.map(s => s.aiScore || s.score).filter(Boolean);
   const avgScore = allScores.length ? allScores.reduce((a, b) => a + b, 0) / allScores.length : 0;
   const bestScore = allScores.length ? Math.max(...allScores) : null;
-  const readinessScore = Math.min(Math.round((avgScore / 10) * 100), 100);
-  const readinessColor = readinessScore >= 70 ? "#10b981" : readinessScore >= 40 ? "#f59e0b" : "#f43f5e";
-  const readinessLabel = readinessScore >= 70 ? "Interview Ready" : readinessScore >= 40 ? "Getting There" : "Keep Practising";
+  // Formula fallback — used while AI assessment is loading or if it fails
+  const formulaScore = totalSessions === 0 ? 0 : Math.min(
+    Math.round(
+      (Math.min(totalSessions / 15, 1) * 0.35 +
+      (avgScore / 10) * 0.45 +
+      (sessions.filter(s => (s.aiScore || s.score || 0) >= 7).length / Math.max(sessions.length, 1)) * 0.20) * 100
+    ), 100
+  );
+  const readinessScore = aiReadiness?.score ?? formulaScore;
+  const readinessColor = readinessScore >= 75 ? "#10b981" : readinessScore >= 50 ? "#f59e0b" : "#f43f5e";
+  const readinessLabel = aiReadiness?.label ?? (readinessScore >= 75 ? "Interview Ready" : readinessScore >= 50 ? "Getting There" : "Keep Practising");
 
   const totalSessions = (profile?.sessionsCount) ?? (sessions.length + interviews.length);
   const streak = profile?.streak || 0;
@@ -533,12 +631,48 @@ export default function StatsScreen({ user, setCurrentScreen }) {
                 <div style={{ fontSize: 64, fontWeight: 900, color: readinessColor, lineHeight: 1, letterSpacing: "-2px", marginBottom: 8 }}>
                   {readinessScore}%
                 </div>
-                <div style={{ fontSize: 16, fontWeight: 700, color: readinessColor, marginBottom: 16 }}>{readinessLabel}</div>
-                <div style={{ height: 8, background: "rgba(255,255,255,0.06)", borderRadius: 4, overflow: "hidden", marginBottom: 12 }}>
+                <div style={{ fontSize: 16, fontWeight: 700, color: readinessColor, marginBottom: 12 }}>{readinessLabel}</div>
+                <div style={{ height: 8, background: "rgba(255,255,255,0.06)", borderRadius: 4, overflow: "hidden", marginBottom: 10 }}>
                   <div style={{ height: "100%", width: `${readinessScore}%`, background: `linear-gradient(90deg, ${readinessColor}, ${readinessColor}88)`, borderRadius: 4, transition: "width 0.8s ease" }} />
                 </div>
+
+                {/* AI summary */}
+                {aiReadiness?.summary && (
+                  <div style={{ fontSize: 13, color: "#94a3b8", fontStyle: "italic", marginBottom: 12, lineHeight: 1.5 }}>
+                    {aiReadiness.summary}
+                  </div>
+                )}
+                {readinessLoading && !aiReadiness && (
+                  <div style={{ fontSize: 12, color: "#475569", marginBottom: 10 }}>
+                    🤖 Analysing your sessions...
+                  </div>
+                )}
+
+                {/* Gaps + Strengths */}
+                {aiReadiness && (aiReadiness.gaps?.length > 0 || aiReadiness.strengths?.length > 0) && (
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12, textAlign: "left" }}>
+                    {aiReadiness.gaps?.length > 0 && (
+                      <div style={{ background: "rgba(244,63,94,0.05)", border: "1px solid rgba(244,63,94,0.12)", borderRadius: 10, padding: "10px 12px" }}>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: "#f43f5e", textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 6 }}>Gaps</div>
+                        {aiReadiness.gaps.map((g, i) => (
+                          <div key={i} style={{ fontSize: 12, color: "#fca5a5", lineHeight: 1.5, marginBottom: 3 }}>· {g}</div>
+                        ))}
+                      </div>
+                    )}
+                    {aiReadiness.strengths?.length > 0 && (
+                      <div style={{ background: "rgba(16,185,129,0.05)", border: "1px solid rgba(16,185,129,0.12)", borderRadius: 10, padding: "10px 12px" }}>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: "#10b981", textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 6 }}>Strengths</div>
+                        {aiReadiness.strengths.map((s, i) => (
+                          <div key={i} style={{ fontSize: 12, color: "#6ee7b7", lineHeight: 1.5, marginBottom: 3 }}>· {s}</div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div style={{ fontSize: 12, color: "#64748b" }}>
                   Based on {totalSessions} session{totalSessions !== 1 ? "s" : ""} · {sessions.length} arena · {interviews.length} interviews
+                  {aiReadiness && <span style={{ color: "#4f46e5", marginLeft: 4 }}>· AI assessed</span>}
                 </div>
               </div>
 
@@ -678,11 +812,13 @@ export default function StatsScreen({ user, setCurrentScreen }) {
                   Next Step
                 </div>
                 <div style={{ fontSize: 14, color: "#a5b4fc", lineHeight: 1.6 }}>
-                  {readinessScore >= 70
-                    ? "You're interview ready. Focus on Quick Drills to sharpen edge-case questions and cement your structure."
-                    : readinessScore >= 40
-                      ? `Complete ${Math.max(5, 10 - sessions.length)} more arena sessions and review your weak phrases. Your readiness grows with volume.`
-                      : "Start with Daily Arena challenges every day. Focus on one framework (PREP or STAR) and apply it consistently."}
+                  {aiReadiness?.nextAction || (
+                    readinessScore >= 75
+                      ? "You're interview ready. Focus on Quick Drills to sharpen edge-case questions and cement your structure."
+                      : readinessScore >= 50
+                        ? `Complete ${Math.max(5, 10 - sessions.length)} more arena sessions and review your weak phrases. Your readiness grows with volume.`
+                        : "Start with Daily Arena challenges every day. Focus on one framework (PREP or STAR) and apply it consistently."
+                  )}
                 </div>
                 <button
                   onClick={() => setCurrentScreen("home")}
