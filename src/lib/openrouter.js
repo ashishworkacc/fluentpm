@@ -276,6 +276,21 @@ export function parseFeedbackBlock(text) {
 
 // ── Battle API Call ──────────────────────────────────────────────────────────
 
+/**
+ * Send a message turn in an Arena battle session.
+ * Streams a response from the AI opponent and returns the cleaned reply text.
+ * After exactly 3 user turns the response includes a `###FEEDBACK###` block
+ * with structured STAR scores, ownership analysis, and a coaching tip.
+ *
+ * @param {Array<{role: string, content: string}>} messages - Full conversation history
+ * @param {Object} opponent - Opponent profile from `src/data/opponents.js`
+ * @param {Object} profile - User coaching profile (weak phrases, recent scores)
+ * @param {Object} scenario - Scenario object with `text` and `situationType`
+ * @param {Object} [options={}] - Optional target phrase / framework instructions
+ * @param {Object|null} [coachingProfile=null] - Aggregated weakness data for adaptive prompting
+ * @param {Object|null} [sessionMetrics=null] - Live session metrics (filler rate, WPM)
+ * @returns {Promise<string>} Cleaned AI reply, think-tags and leading whitespace stripped
+ */
 export async function sendBattleMessage(messages, opponent, profile, scenario, options = {}, coachingProfile = null, sessionMetrics = null) {
   const systemPrompt = buildBattleSystemPrompt(opponent, profile, scenario, { ...options, coachingProfile });
 
@@ -353,6 +368,16 @@ Rules:
 - Return valid JSON only`;
 }
 
+/**
+ * AI-enrich a Lexicon expression with definition, pronunciation, register,
+ * usage examples, and a PM-context sentence.
+ * Saves the result directly to Firestore and updates the item's status
+ * from `pending_enrichment` to `enriched`.
+ *
+ * @param {string} expression - The phrase or expression to enrich (e.g. "boil the ocean")
+ * @returns {Promise<Object>} Enrichment data: `{ definition, pronunciation, register, examples, pmSentence }`
+ * @throws {Error} On network failure or JSON parse error
+ */
 export async function enrichExpression(expression) {
   const prompt = buildEnrichPrompt(expression);
   const controller = new AbortController();
@@ -643,6 +668,18 @@ export function parseInterviewFeedback(text) {
 
 // ── Interview API Call ───────────────────────────────────────────────────────
 
+/**
+ * Send a message turn in an Interview simulation session.
+ * The AI acts strictly as the interviewer — it asks questions only and never
+ * models sample candidate answers (role isolation enforced in system prompt).
+ *
+ * @param {Array<{role: string, content: string}>} messages - Full conversation history
+ * @param {Object} interviewer - Interviewer profile from `src/data/interviewers.js`
+ * @param {Object} question - Interview question object with `text` and `type`
+ * @param {string} questionType - One of "behavioral", "product", "estimation", "strategy"
+ * @param {Object|null} [sessionMetrics=null] - Live session metrics for adaptive prompting
+ * @returns {Promise<string>} Interviewer's next question or follow-up, think-tags stripped
+ */
 export async function sendInterviewMessage(messages, interviewer, question, questionType, sessionMetrics = null) {
   const systemPrompt = buildInterviewSystemPrompt(interviewer, question, questionType);
 
@@ -762,6 +799,16 @@ Return ONLY the rewritten response. No explanation. No quotes around it.`;
  * Sends a compact session summary (~200 tokens) and gets back:
  * { score: 0-100, label, summary, gaps[], strengths[], nextAction }
  * Returns null on failure — caller should use formula fallback.
+ */
+/**
+ * Assess a user's overall PM interview readiness based on their session history.
+ * Returns a structured report with a readiness score, top strengths, critical
+ * gaps, and a prioritised 7-day action plan.
+ * Results are cached in sessionStorage for 30 minutes to avoid redundant API calls.
+ *
+ * @param {Array<Object>} sessions - Arena battle sessions from Firestore
+ * @param {Array<Object>} interviews - Interview simulation sessions from Firestore
+ * @returns {Promise<Object>} `{ readinessScore, strengths, gaps, actionPlan, summary }`
  */
 export async function assessInterviewReadiness(sessions, interviews) {
   const recentSessions = sessions.slice(0, 15);

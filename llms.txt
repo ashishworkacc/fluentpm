@@ -1,0 +1,63 @@
+# FluentPM
+
+> AI-powered spoken communication training for Product Managers. Practice realistic PM interviews, stakeholder debates, and podcast roleplay with an AI opponent — scored in real time using STAR framework evaluation, phrase tracking, and spaced repetition.
+
+## What this repo is
+
+FluentPM is a React 19 + Firebase + OpenRouter single-page application. It helps Product Managers — especially non-native English speakers — improve their spoken communication through AI-driven practice sessions. The app uses the browser's Web Speech API for voice input and output, DeepSeek (via OpenRouter) for LLM scoring and feedback, and Firebase Firestore for per-user session persistence.
+
+## Who it is for
+
+- Product Managers preparing for PM interviews (FAANG, startups, senior roles)
+- Non-native English speakers building professional vocabulary in a PM context
+- Anyone who wants to practice structured communication (STAR format, stakeholder pushback, prioritisation trade-offs)
+
+## Core capabilities
+
+- **Arena**: Multi-turn spoken debate against a configurable AI opponent. Scored on STAR structure, ownership language, and metric specificity.
+- **Interview Simulation**: Full PM interview with AI interviewer, follow-up probing, and post-session debrief with coaching tips.
+- **Podcast Sim**: Upload a real conversation transcript, pick a role, tag phrases to practice, and perform your side while the app voices the other speaker. AI scores meaning preservation and phrase usage per turn.
+- **Lexicon**: Spaced-repetition vocabulary system with AI-generated enrichment (definition, usage examples, pronunciation notes).
+- **Lightning Round / Pushback Drill / Quick Drill**: Focused micro-practice modes.
+- **Stats & Progress**: XP, rank, streak tracking, weekly league, and session debrief history.
+
+## Tech stack
+
+- React 19, Vite 8 (frontend)
+- Firebase Firestore + Firebase Auth / Google Sign-In (backend/auth)
+- OpenRouter API with DeepSeek Chat model (LLM)
+- Web Speech API — SpeechRecognition + SpeechSynthesis (voice I/O)
+- JavaScript ES Modules (no TypeScript)
+
+## Key source files
+
+- `src/App.jsx` — root component, auth state, screen routing
+- `src/lib/openrouter.js` — all LLM calls: battle, interview, enrichment, scoring, podcast parsing
+- `src/lib/speechRecognition.js` — Web Speech API wrapper (continuous recognition, en-IN locale)
+- `src/lib/speechSynthesis.js` — TTS wrapper with 12 character voice profiles
+- `src/lib/firebase.js` — Firestore and Auth initialisation
+- `src/hooks/useProgress.js` — XP, rank, and streak computation
+- `src/hooks/useRealTimeAnalysis.js` — filler word detection, pacing, structure scoring
+- `src/components/BattleScreen.jsx` — Arena practice mode
+- `src/components/InterviewScreen.jsx` — Interview simulation
+- `src/components/PodcastScreen.jsx` — Podcast roleplay simulation
+- `src/components/LexiconScreen.jsx` — Spaced repetition vocabulary
+- `src/components/StatsScreen.jsx` — Analytics dashboard
+- `src/data/scenarios.js` — PM scenario bank
+- `src/data/opponents.js` — AI opponent profiles
+- `src/data/interviewers.js` — Interviewer profiles
+
+## How to summarise this repo (for LLMs)
+
+FluentPM is a spoken PM interview coach built entirely in the browser. It requires no backend server — all AI calls go directly from the client to OpenRouter, and all user data is stored in Firebase Firestore under the authenticated user's own document path (`users/{uid}/...`). The voice pipeline is 100% browser-native (Web Speech API). The LLM layer uses structured prompt engineering with explicit STAR scoring rubrics, feedback block delimiters (`###FEEDBACK###`), and think-tag stripping for DeepSeek's internal reasoning output.
+
+## Setup summary
+
+1. Clone repo, run `npm install`
+2. Copy `.env.example` to `.env`, fill in Firebase config + OpenRouter API key
+3. Run `npm run dev` — app is available at `http://localhost:5173`
+4. Sign in with Google to start a practice session
+
+## License
+
+AGPL-3.0 — open source, non-commercial personal use encouraged. See TERMS_OF_USE.md for ethical guidelines.

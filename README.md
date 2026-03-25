@@ -1,21 +1,38 @@
-# FluentPM
+# FluentPM — AI PM Interview Coach
 
 **Train your voice. Own the room.**
+
+> An open-source AI interview coach for Product Managers. Practice spoken PM interviews, stakeholder debates, and conversation roleplay with real-time STAR scoring, spaced-repetition vocabulary, and voice I/O — all in the browser.
 
 ![React](https://img.shields.io/badge/React-19-61dafb?logo=react&logoColor=white)
 ![Firebase](https://img.shields.io/badge/Firebase-Firestore%20%2B%20Auth-orange?logo=firebase)
 ![Vite](https://img.shields.io/badge/Vite-8-646cff?logo=vite&logoColor=white)
 ![License](https://img.shields.io/badge/License-AGPL--3.0-blue)
+![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)
+
+If FluentPM helps your interview prep, please ⭐ star this repo — it helps others discover it.
+
+---
+
+## Demo
+
+<!-- Drop a screen recording GIF here — recommended tool: Kap (macOS, free) -->
+<!-- Record: Home → Arena → speak a response → score card appears (~30 sec) -->
+<!-- Then replace the line below with: ![Demo](assets/demo.gif) -->
+
+> 📸 Screenshot / GIF coming soon. Run `npm run dev` to see it live in under 3 minutes.
 
 ---
 
 ## What is FluentPM?
 
-FluentPM is an AI-powered communication training tool for Product Managers. It combines realistic AI conversation practice, gamification, and a spaced-repetition vocabulary system to help PMs — especially non-native English speakers — sharpen their spoken communication before high-stakes interviews and stakeholder meetings.
+**FluentPM is an AI-powered PM interview coach that runs entirely in your browser.** It uses DeepSeek (via OpenRouter) for real-time STAR framework scoring, the Web Speech API for voice input and output, and Firebase for session persistence — no backend server required.
 
-**The problem:** PM interviews and leadership conversations demand clear, structured, confident speech under pressure. Generic speaking apps don't simulate the specific dynamics of PM work — pushback from stakeholders, behavioral interview formats, or domain-specific language.
+Built for Product Managers who need to practice spoken communication under pressure: FAANG interviews, senior PM roles, or everyday stakeholder conversations. Especially useful for non-native English speakers who want structured, AI-coached repetition.
 
-**The solution:** FluentPM puts you in realistic PM scenarios with AI opponents that challenge your thinking, score your STAR-format answers, track your vocabulary growth, and adapt to your weaknesses over time.
+**The problem:** Generic speaking apps don't simulate PM-specific dynamics — stakeholder pushback, behavioral interview probing, or domain vocabulary like metrics, prioritisation trade-offs, and ownership language.
+
+**The solution:** FluentPM puts you in realistic PM scenarios with AI opponents that score your STAR-format answers, probe your reasoning, track vocabulary growth, and adapt to your weak points over time.
 
 ---
 
