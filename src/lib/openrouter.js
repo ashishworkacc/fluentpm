@@ -25,7 +25,7 @@ export function buildBattleSystemPrompt(opponent, profile, scenario, options = {
   const aggressionStyle = aggressionMap[opponent.aggression] || aggressionMap.medium;
 
   return `You are ${opponent.name}, ${opponent.role} in a professional setting.
-Your catchphrase: "${opponent.catchphrase}"
+Your catchphrase (personality flavour ONLY — do NOT open with it literally, and do NOT use it more than once per conversation): "${opponent.catchphrase}"
 Your personality: ${opponent.description}
 Your communication style: ${aggressionStyle}
 

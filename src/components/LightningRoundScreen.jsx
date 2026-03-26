@@ -259,10 +259,14 @@ export default function LightningRoundScreen({ user, setCurrentScreen }) {
         }
       },
       () => {
-        if (liveTranscriptRef.current.trim()) {
-          setConfirmedTranscript(liveTranscriptRef.current);
+        const captured = liveTranscriptRef.current.trim();
+        if (captured) {
+          setConfirmedTranscript(captured);
+          setMicState("idle");
+        } else {
+          // Mic died silently with nothing captured — switch to text input so session can continue
+          setMicState("nomic");
         }
-        setMicState("idle");
       }
     );
 
@@ -684,6 +688,15 @@ export default function LightningRoundScreen({ user, setCurrentScreen }) {
                 🎤
               </button>
               <div style={{ fontSize: 12, color: "#f43f5e", fontWeight: 600 }}>Recording... tap to stop</div>
+              <button
+                onClick={() => {
+                  recognitionRef.current?.stop?.();
+                  setMicState("nomic");
+                }}
+                style={{ background: "none", border: "none", color: "#64748b", fontSize: 12, cursor: "pointer", textDecoration: "underline", padding: 0 }}
+              >
+                Type instead
+              </button>
             </div>
           )}
 

@@ -221,6 +221,7 @@ export default function BattleScreen({
   // processingPhase: "idle" | "correcting" | "thinking" | "speaking"
 
   const recognitionRef = useRef(null);
+  const emptyCaptureCounts = useRef(0);
   const messagesEndRef = useRef(null);
   const hasInitialised = useRef(false);
   const liveTranscriptRef = useRef(""); // tracks transcript in callbacks (avoids stale closure)
@@ -270,6 +271,8 @@ export default function BattleScreen({
     async function getOpenerLine() {
       setIsOpponentTyping(true);
       try {
+        // Random nonce forces the model to generate a fresh opener each session
+        const openerNonce = Math.random().toString(36).slice(2, 7);
         const systemHint = {
           targetInstruction: "",
           frameworkInstruction: scenario.suggestedFramework
@@ -277,7 +280,7 @@ export default function BattleScreen({
             : "",
           midCoachInstruction: outline
             ? `The user has prepared this outline: "${outline}". You don't know this — it's their private prep.`
-            : "",
+            : `Open with a direct, specific challenge that is UNIQUE this session [ref:${openerNonce}]. Do NOT use your catchphrase. Do NOT open with time pressure language. Lead with a pointed question or accusation rooted in the scenario specifics.`,
         };
         const { reply } = await sendBattleMessage(
           [],
@@ -332,13 +335,21 @@ export default function BattleScreen({
         // onEnd fires when user taps stop (or a real error occurs)
         const captured = (finalText || liveTranscriptRef.current).trim();
         if (!captured) {
-          // Nothing captured — browser likely doesn't support mic or permission was denied
-          // Auto-switch to text input with a clear message
-          setMicSupported(false);
-          setMicState("nomic");
-          setError("Voice not captured. Type your response below — this browser may not support the microphone.");
+          emptyCaptureCounts.current += 1;
+          if (emptyCaptureCounts.current >= 2) {
+            // Two consecutive empty captures → assume mic unavailable for this session
+            setMicSupported(false);
+            setMicState("nomic");
+            setError("Microphone isn't capturing audio. Type your response below.");
+          } else {
+            // First empty — likely stopped too quickly, just reset and let them retry
+            setMicState("idle");
+            setError("Nothing was captured — tap the mic and try again.");
+            setTimeout(() => setError(null), 3000);
+          }
           return;
         }
+        emptyCaptureCounts.current = 0;
 
         // Calculate WPM from this recording
         const durationMs = Date.now() - (recordingStartRef.current || Date.now());
