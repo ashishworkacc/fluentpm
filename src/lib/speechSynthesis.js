@@ -16,6 +16,21 @@ export const VOICE_PROFILES = {
 
 let voices = [];
 let voicesLoaded = false;
+let speechUnlocked = false;
+
+/**
+ * Prime the iOS audio session by speaking a silent empty utterance.
+ * Must be called synchronously inside a user-gesture handler (e.g. mic button click).
+ * iOS blocks speechSynthesis.speak() in async contexts — one unlock call per session fixes it.
+ */
+export function unlockSpeech() {
+  if (speechUnlocked) return;
+  if (typeof window === "undefined" || !window.speechSynthesis) return;
+  const u = new SpeechSynthesisUtterance("");
+  u.volume = 0;
+  window.speechSynthesis.speak(u);
+  speechUnlocked = true;
+}
 
 function loadVoices() {
   voices = window.speechSynthesis.getVoices();
@@ -112,13 +127,41 @@ export function speakOpponentLine(text, opponentId, onWordBoundary, onEnd) {
     }
   };
 
-  utterance.onend = () => onEnd?.();
-  utterance.onerror = () => onEnd?.();
-
   window.speechSynthesis.speak(utterance);
+
+  // iOS: prevent silent truncation after ~14s (pause/resume kicks the synthesis engine)
+  const isIOS = typeof navigator !== "undefined" && /iPad|iPhone|iPod/.test(navigator.userAgent);
+  let keepalive = null;
+  if (isIOS) {
+    keepalive = setInterval(() => {
+      window.speechSynthesis.pause();
+      window.speechSynthesis.resume();
+    }, 10000);
+  }
+
+  // Safety net: if onend never fires (iOS bug), unblock the session after estimated duration
+  const wordCount = cleanText.split(/\s+/).filter(Boolean).length;
+  const estimatedMs = (wordCount / 130) * 60 * 1000;
+  const safetyTimer = setTimeout(() => {
+    clearInterval(keepalive);
+    onEnd?.();
+  }, estimatedMs + 4000);
+
+  utterance.onend = () => {
+    clearInterval(keepalive);
+    clearTimeout(safetyTimer);
+    onEnd?.();
+  };
+  utterance.onerror = () => {
+    clearInterval(keepalive);
+    clearTimeout(safetyTimer);
+    onEnd?.();
+  };
 
   return {
     stop: () => {
+      clearInterval(keepalive);
+      clearTimeout(safetyTimer);
       window.speechSynthesis.cancel();
       onEnd?.();
     },
@@ -176,13 +219,39 @@ export function speakPodcastLine(text, onEnd) {
   const voice = pickVoicePodcast();
   if (voice) utterance.voice = voice;
 
-  utterance.onend = () => onEnd?.();
-  utterance.onerror = () => onEnd?.();
-
   window.speechSynthesis.speak(utterance);
+
+  const isIOS = typeof navigator !== "undefined" && /iPad|iPhone|iPod/.test(navigator.userAgent);
+  let keepalive = null;
+  if (isIOS) {
+    keepalive = setInterval(() => {
+      window.speechSynthesis.pause();
+      window.speechSynthesis.resume();
+    }, 10000);
+  }
+
+  const wordCount = cleanText.split(/\s+/).filter(Boolean).length;
+  const estimatedMs = (wordCount / 130) * 60 * 1000;
+  const safetyTimer = setTimeout(() => {
+    clearInterval(keepalive);
+    onEnd?.();
+  }, estimatedMs + 4000);
+
+  utterance.onend = () => {
+    clearInterval(keepalive);
+    clearTimeout(safetyTimer);
+    onEnd?.();
+  };
+  utterance.onerror = () => {
+    clearInterval(keepalive);
+    clearTimeout(safetyTimer);
+    onEnd?.();
+  };
 
   return {
     stop: () => {
+      clearInterval(keepalive);
+      clearTimeout(safetyTimer);
       window.speechSynthesis.cancel();
       onEnd?.();
     },

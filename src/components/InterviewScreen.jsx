@@ -4,7 +4,7 @@ import { startRecognition } from "../lib/speechRecognition.js";
 import { analyseTranscript } from "../hooks/useRealTimeAnalysis.js";
 import TalkingFace from "./TalkingFace.jsx";
 import MicWaveform from "./MicWaveform.jsx";
-import { cancelSpeech } from "../lib/speechSynthesis.js";
+import { cancelSpeech, unlockSpeech } from "../lib/speechSynthesis.js";
 import { INTERVIEW_TYPES } from "../data/interviewers.js";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../lib/firebase.js";
@@ -245,6 +245,7 @@ export default function InterviewScreen({
   // ── Mic handling ────────────────────────────────────────────────────────────
 
   function handleMicClick() {
+    unlockSpeech(); // prime iOS audio session on user gesture (must be synchronous)
     if (micState !== "idle") return;
     liveTranscriptRef.current = "";
     setLiveTranscript("");
